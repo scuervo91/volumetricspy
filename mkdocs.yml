@@ -1,4 +1,4 @@
-site_name: Package
+site_name: Volumetricspy
 theme:
   name: material
   palette:
@@ -18,8 +18,8 @@ theme:
 nav:
   - Home: index.md
 
-repo_url: https://github.com/scuervo91/package
-repo_name: scuervo91/dcapy
+repo_url: https://github.com/scuervo91/Volumetricspy
+repo_name: scuervo91/volumetricspy
 
 plugins:
   - search
