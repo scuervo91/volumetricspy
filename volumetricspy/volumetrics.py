@@ -8,88 +8,97 @@ from scipy.interpolate import griddata
 import geopandas as gpd
 from shapely.geometry import MultiPolygon, Polygon
 from zmapio import ZMAPGrid
+from pydantic import BaseModel, Field, validator, validate_arguments
+from typing import Dict, Tuple, List, Union
 
 def poly_area(x,y):
     return 0.5*np.abs(np.dot(x,np.roll(y,1))-np.dot(y,np.roll(x,1)))
 
-class Surface:
-    def __init__(self, **kwargs):
-        self.x = kwargs.pop('x',None)
-        self.y = kwargs.pop('y',None)
-        self.z = kwargs.pop('z',None)
-        self.crs = kwargs.pop('crs',4326)
+class Surface(BaseModel):
+    name: str = Field(...)
+    shape: Tuple[int,int] = Field(None)
+    x: np.ndarray = Field(None)
+    y: np.ndarray = Field(None)
+    z: np.ndarray = Field(None)
+    crs: int = Field(None)
+    fields: Dict[str,np.ndarray] = Field(None)
 
-    #Properties
-
-    @property
-    def x(self):
-        return self._x 
-
-    @x.setter 
-    def x(self,value):
-        if value is not None:
-            assert isinstance(value,np.ndarray)
-            assert value.ndim == 2 
-        self._x = value
-
-    @property
-    def y(self):
-        return self._y 
-
-    @y.setter 
-    def y(self,value):
-        if value is not None:
-            assert isinstance(value,np.ndarray)
-            assert value.ndim == 2 
-        self._y = value
-
-    @property
-    def z(self):
-        return self._z 
-
-    @z.setter 
-    def z(self,value):
-        if value is not None:
-            assert isinstance(value,np.ndarray)
-            assert value.ndim == 2 
-        self._z = value
-
-    @property
-    def crs(self):
-        return self._crs
-
-    @crs.setter
-    def crs(self,value):
-        assert isinstance(value,(int,str,type(None))), f"{type(value)} not accepted. Name must be str. Example 'EPSG:3117'"
+    class Config:
+        arbitrary_types_allowed = True
+        json_encoders = {np.ndarray: lambda x: x.tolist()}
+        validate_assignment = True
         
-        if isinstance(value,int):
-            value = f'EPSG:{value}'
-        elif isinstance(value,str):
-            assert value.startswith('EPSG:'), 'if crs is string must starts with EPSG:. If integer must be the Coordinate system reference number EPSG http://epsg.io/'
-        self._crs = value
+       
+    @validator('x')
+    def check_shape(cls,v,values):
+        length = values['shape'][1]
+        assert v.ndim == 1
+        assert v.shape[0] == length, f'Shape mismatch: {v.shape} != {length}'
+        return v
+
+    @validator('y')
+    def check_shape(cls,v,values):
+        length = values['shape'][0]
+        assert v.ndim == 1
+        assert v.shape[0] == length, f'Shape mismatch: {v.shape} != {length}'
+        return v
+
+    @validator('z')
+    def check_shape(cls,v,values):
+        length = values['shape'][0] * values['shape'][1]
+        assert v.ndim == 1
+        assert v.shape[0] == length, f'Shape mismatch: {v.shape} != {length}'
+        return v
+
+    @validator('fields')
+    def check_shape(cls,v,values):
+        length = values['shape'][0] * values['shape'][1]
+        for i in v:
+            assert v[i].ndim == 1
+            assert v[i].shape[0] == length, f'Shape mismatch: {v[i].shape} != {length}'
+        return v
+    
+    def from_z_map(self,value, factor_z = -1, crs=4326):
+
+        z_file = ZMAPGrid(value)
+        z_df = z_file.to_dataframe().dropna()
+        z_df['Z'] *= factor_z
+        p = z_df.pivot(index='Y',columns='X',values='Z')
+        p.sort_index(axis=0, inplace=True)
+        p.sort_index(axis=1, inplace=True)
+
+        self.x = np.array(p.columns)
+        self.y = np.array(p.index)
+        self.z = p.values.flatten()
+        self.crs=crs
+    
+    def get_mesh(self):
+        xx, yy = np.meshgrid(self.x, self.y)
+        zz = self.z.reshape(self.shape)
+        return xx, yy, zz
 
     def contour(self,ax=None,**kwargs):
 
         #Create the Axex
         cax= ax or plt.gca()
-
-        return cax.contour(self.x,self.y,self.z,**kwargs)
+        xx, yy, zz = self.get_mesh()
+        return cax.contour(xx,yy,zz,**kwargs)
 
     def contourf(self,ax=None,**kwargs):
 
         #Create the Axex
         cax= ax or plt.gca()
+        xx, yy, zz = self.get_mesh()
+        return cax.contourf(xx,yy,zz,**kwargs)
 
-        return cax.contourf(self.x,self.y,self.z,**kwargs)
-        
-    
     def structured_surface_vtk(self):
 
         #Get a Pyvista Object StructedGrid
-        grid = pv.StructuredGrid(self.x, self.y, self.z).elevation()
+        xx, yy, zz = self.get_mesh()
+        grid = pv.StructuredGrid(xx, yy, zz).elevation()
 
         return grid
-
+        
     def get_contours_bound(self,levels=None,zmin=None,zmax=None,n=10):
         #define levels
         if levels is not None:
@@ -157,14 +166,13 @@ class Surface:
             assert levels.ndim==1
         else:
             levels = np.linspace(zmin,zmax,n)
-
-        dif_x = np.diff(self.x,axis=1).mean(axis=0)
-        dif_y = np.diff(self.y,axis=0).mean(axis=1)
+        xx, yy, z = self.get_mesh()
+        dif_x = np.diff(xx,axis=1).mean(axis=0)
+        dif_y = np.diff(yy,axis=0).mean(axis=1)
         dxx, dyy = np.meshgrid(dif_x,dif_y) 
         
         area_dict = {}
         for i in levels:
-            z = self.z.copy()
             z[(z<i)|(z>zmax)|(z<zmin)] = np.nan
             z = z[1:,1:]
             a = dxx * dyy * ~np.isnan(z) *2.4697887e-4
@@ -185,7 +193,7 @@ class Surface:
 
             levels = np.linspace(zmin,zmax,n)
 
-        zz = self.z
+        _,_,zz = self.get_mesh()
         xmax = np.nanmax(self.x)
         ymax = np.nanmax(self.y)
         xmin = np.nanmin(self.x)
@@ -227,7 +235,8 @@ class Surface:
 
             levels = np.linspace(zmin,zmax,n)
 
-        zz = self.z
+        xx, yy, zz = self.get_mesh()
+        
         xmax = np.nanmax(self.x)
         ymax = np.nanmax(self.y)
         xmin = np.nanmin(self.x)
@@ -312,7 +321,6 @@ class Surface:
 
     def get_volume(self,levels=None, n=10,c=2.4697887e-4):
         
-        
         area = self.get_contours_area(levels=levels,n=n,c=c,group=True)
 
         #Integrate
@@ -320,26 +328,11 @@ class Surface:
 
         return rv, area
 
-    def from_z_map(self,value, factor_z = -1, crs=4326):
-
-        z_file = ZMAPGrid(value)
-        z_df = z_file.to_dataframe().dropna()
-        z_df['Z'] *= factor_z
-        p = z_df.pivot(index='Y',columns='X',values='Z')
-        p.sort_index(axis=0, inplace=True)
-        p.sort_index(axis=1, inplace=True)
-        xx,yy = np.meshgrid(p.columns,p.index)
-
-        self.x = xx
-        self.y = yy
-        self.z = p.values
-        self.crs=crs
-
     def get_z(self, x, y, method='linear'):
-
-        _x = self.x.flatten()
-        _y = self.y.flatten()
-        _z = self.z.flatten()
+        xx, yy, zz = self.get_mesh()
+        _x = xx.flatten()
+        _y = yy.flatten()
+        _z = zz.flatten()
 
         _xf = _x[~np.isnan(_z)]
         _yf = _y[~np.isnan(_z)]
@@ -347,34 +340,31 @@ class Surface:
 
         return griddata((_xf,_yf),_zf,(x,y), method=method)
 
+class SurfacesGroup(BaseModel):
+    surfaces: Dict[str,Surface] = Field(None)
+    
+    class Config:
+        arbitrary_types_allowed = True
+        validate_assignment = True
+    
+    @validator('surfaces')
+    def check_epsg(cls,v):
+        list_epsg = [v[i].crs for i in v]
+        assert all(x == list_epsg[0] for x in list_epsg)
+        return v
 
-class SurfaceGroup:
-    def __init__(self,**kwargs):
-       
-        self.surfaces = kwargs.pop('surfaces',None) 
-
-    @property
-    def surfaces(self):
-        return self._surfaces
-
-    @surfaces.setter 
-    def surfaces(self,value):
-        if value is not None:
-            assert isinstance(value,dict)
-            assert all(isinstance(value[i],Surface) for i in value)
-            self._surfaces = value
+    @validate_arguments
+    def add_surface(self,surf:Union[Surface,List[Surface]]):
+        list_surfaces = []
+        if isinstance(surf,Surface):
+            list_surfaces.append(surf)
         else:
-            self._surfaces = {}
-
-    def add_surface(self,surf):
-        assert isinstance(surf,dict)
-        assert all(isinstance(surf[i],Surface) for i in surf)
-
-        _surface_dict = self.surfaces.copy()
-
-        _surface_dict.update(surf)
-        self._surfaces = _surface_dict
-
+            list_surfaces.extend(surf)
+            
+        s = {i.name:i for i in list_surfaces}
+        
+        self.surfaces.update(s)
+            
     def get_volume_bounds(self, 
         top_surface=None, 
         bottom_surface=None, 
@@ -473,19 +463,3 @@ class SurfaceGroup:
         grid_blocks = pv.MultiBlock(data)
 
         return grid_blocks
-
-
-
-
-
-
-
-            
-            
-
-
-
-
-
-    
-
