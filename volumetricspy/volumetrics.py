@@ -70,6 +70,7 @@ class Surface(BaseModel):
         self.x = np.array(p.columns)
         self.y = np.array(p.index)
         self.z = p.values.flatten()
+        self.shape = p.values.shape
         self.crs=crs
     
     def get_mesh(self):
@@ -98,6 +99,48 @@ class Surface(BaseModel):
         grid = pv.StructuredGrid(xx, yy, zz).elevation()
 
         return grid
+    
+    def get_contours(self,levels=None,zmin=None,zmax=None,n=10):
+        
+        #define levels
+        if levels is not None:
+            assert isinstance(levels,(np.ndarray,list))
+            levels = np.atleast_1d(levels)
+            assert levels.ndim==1
+        else:
+            zmin = zmin if zmin is not None else np.nanmin(self.z)
+            zmax = zmax if zmax is not None else np.nanmax(self.z)
+
+            levels = np.linspace(zmin,zmax,n)
+
+        _,_,zz = self.get_mesh()
+        xmax = np.nanmax(self.x)
+        ymax = np.nanmax(self.y)
+        xmin = np.nanmin(self.x)
+        ymin = np.nanmin(self.y)
+
+        #iterate over levels levels
+        data = pd.DataFrame()
+        i = 0
+        for level in levels:
+            contours = measure.find_contours(zz,level)
+
+            if contours == []:
+                continue
+            else:
+                for contour in contours:
+                    level_df = pd.DataFrame(contour, columns=['y','x'])
+                    level_df['z'] = level
+                    level_df['n'] = i
+                    data = data.append(level_df,ignore_index=True)
+                    i += 1
+
+        if not data.empty:
+            #re scale
+            data['x'] = (data['x']/zz.shape[1]) * (xmax - xmin) + xmin
+            data['y'] = (data['y']/zz.shape[0]) * (ymax - ymin) + ymin
+
+        return data
         
     def get_contours_bound(self,levels=None,zmin=None,zmax=None,n=10):
         #define levels
@@ -126,8 +169,8 @@ class Surface(BaseModel):
         #Organize the points according their angle with respect the centroid. This is done with the 
         #porpuse of plot the bounds continously.
         list_df_sorted = []
-
         for i in df['z'].unique():
+
             df_z = df.loc[df['z']==i,['x','y','z']]
             centroid = df_z[['x','y']].mean(axis=0).values
             df_z[['delta_x','delta_y']] = df_z[['x','y']] - centroid
@@ -166,13 +209,14 @@ class Surface(BaseModel):
             assert levels.ndim==1
         else:
             levels = np.linspace(zmin,zmax,n)
-        xx, yy, z = self.get_mesh()
+        xx, yy, zz = self.get_mesh()
         dif_x = np.diff(xx,axis=1).mean(axis=0)
         dif_y = np.diff(yy,axis=0).mean(axis=1)
         dxx, dyy = np.meshgrid(dif_x,dif_y) 
         
         area_dict = {}
         for i in levels:
+            z = zz.copy()
             z[(z<i)|(z>zmax)|(z<zmin)] = np.nan
             z = z[1:,1:]
             a = dxx * dyy * ~np.isnan(z) *2.4697887e-4
@@ -180,47 +224,7 @@ class Surface(BaseModel):
 
         return pd.DataFrame.from_dict(area_dict, orient='index', columns=['area'])
 
-    def get_contours(self,levels=None,zmin=None,zmax=None,n=10):
-        
-        #define levels
-        if levels is not None:
-            assert isinstance(levels,(np.ndarray,list))
-            levels = np.atleast_1d(levels)
-            assert levels.ndim==1
-        else:
-            zmin = zmin if zmin is not None else np.nanmin(self.z)
-            zmax = zmax if zmax is not None else np.nanmax(self.z)
 
-            levels = np.linspace(zmin,zmax,n)
-
-        _,_,zz = self.get_mesh()
-        xmax = np.nanmax(self.x)
-        ymax = np.nanmax(self.y)
-        xmin = np.nanmin(self.x)
-        ymin = np.nanmin(self.y)
-
-        #iterate over levels levels
-        data = pd.DataFrame()
-        i = 0
-        for level in levels:
-            contours = measure.find_contours(zz,level)
-
-            if contours == []:
-                continue
-            else:
-                for contour in contours:
-                    level_df = pd.DataFrame(contour, columns=['y','x'])
-                    level_df['level'] = level
-                    level_df['n'] = i
-                    data = data.append(level_df,ignore_index=True)
-                    i += 1
-
-        if not data.empty:
-            #re scale
-            data['x'] = (data['x']/zz.shape[1]) * (xmax - xmin) + xmin
-            data['y'] = (data['y']/zz.shape[0]) * (ymax - ymin) + ymin
-
-        return data
 
     def get_contours_gdf(self,levels=None,zmin=None,zmax=None,n=10, crs="EPSG:4326"):
         

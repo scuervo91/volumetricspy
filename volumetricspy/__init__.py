@@ -1,1 +1,1 @@
-from .volumetrics import Surface, poly_area, SurfaceGroup
+from .volumetrics import Surface, poly_area, SurfacesGroup

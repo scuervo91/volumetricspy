@@ -1152,6 +1152,20 @@ python-versions = "*"
 cpu = ["psutil", "mkl"]
 
 [[package]]
+name = "seaborn"
+version = "0.11.2"
+description = "seaborn: statistical data visualization"
+category = "main"
+optional = false
+python-versions = ">=3.6"
+
+[package.dependencies]
+matplotlib = ">=2.2"
+numpy = ">=1.15"
+pandas = ">=0.23"
+scipy = ">=1.0"
+
+[[package]]
 name = "send2trash"
 version = "1.8.0"
 description = "Send file to trash natively under Mac OS X, Windows and Linux."
@@ -1428,7 +1442,7 @@ testing = ["coverage (>=5.0.3)", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.8,<3.10"
-content-hash = "655d967f7c311c970b449b47fd2731a1f606c559157e2c4cf8b47d3215f41a2a"
+content-hash = "e0b5cd97be58916c515d49c897c1753fa9ea77d1eace71a4fc02546158a10482"
 
 [metadata.files]
 aiohttp = [
@@ -2346,6 +2360,10 @@ scipy = [
 scooby = [
     {file = "scooby-0.5.7-py3-none-any.whl", hash = "sha256:bc5ebc6919965e8591623ad2c24fe91f40941e5e73038999ccf5de4a31439f68"},
     {file = "scooby-0.5.7.tar.gz", hash = "sha256:ae2c2b6f5f5d10adf7aaab32409028f1e28d3ce833664bdd1e8c2072e8da169a"},
+]
+seaborn = [
+    {file = "seaborn-0.11.2-py3-none-any.whl", hash = "sha256:85a6baa9b55f81a0623abddc4a26b334653ff4c6b18c418361de19dbba0ef283"},
+    {file = "seaborn-0.11.2.tar.gz", hash = "sha256:cf45e9286d40826864be0e3c066f98536982baf701a7caa386511792d61ff4f6"},
 ]
 send2trash = [
     {file = "Send2Trash-1.8.0-py3-none-any.whl", hash = "sha256:f20eaadfdb517eaca5ce077640cb261c7d2698385a6a0f072a4a5447fd49fa08"},
