@@ -18,6 +18,7 @@ zmapio = "^0.6.0"
 scikit-image = "^0.18.2"
 pydantic = "^1.8.2"
 seaborn = "^0.11.2"
+folium = "^0.12.1"
 
 [tool.poetry.dev-dependencies]
 notebook = "^6.4.3"

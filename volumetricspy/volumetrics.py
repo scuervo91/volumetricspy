@@ -10,7 +10,8 @@ from shapely.geometry import MultiPolygon, Polygon
 from zmapio import ZMAPGrid
 from pydantic import BaseModel, Field, validator, validate_arguments
 from typing import Dict, Tuple, List, Union
-
+import folium
+from folium.plugins import MeasureControl,MousePosition
 def poly_area(x,y):
     return 0.5*np.abs(np.dot(x,np.roll(y,1))-np.dot(y,np.roll(x,1)))
 
@@ -226,7 +227,7 @@ class Surface(BaseModel):
 
 
 
-    def get_contours_gdf(self,levels=None,zmin=None,zmax=None,n=10, crs="EPSG:4326"):
+    def get_contours_gdf(self,levels=None,zmin=None,zmax=None,n=10, crs=None):
         
         #define levels
         if levels is not None:
@@ -289,8 +290,54 @@ class Surface(BaseModel):
         data.crs = self.crs 
         
         #Convert to defined crs
-        data = data.to_crs(crs)
+        if crs is not None:
+            data = data.to_crs(crs)
         return data
+
+    def surface_map(
+        self, 
+        levels=None,
+        zmin=None,
+        zmax=None,
+        n=10, 
+        crs=4326,
+        zoom=10, 
+        map_style = 'OpenStreetMap', 
+        ax=None,
+        fill_color='OrRd', 
+        fill_opacity=1, 
+        line_opacity=1,
+    ):
+    
+        gdf = self.get_contours_gdf(levels=levels,zmin=zmin,zmax=zmax,n=n,crs=crs).reset_index()
+
+        
+        if ax is None:
+            centroid_gdf = gdf.to_crs(self.crs).centroid.to_crs(crs)
+            centroid_df = pd.DataFrame({'lon':centroid_gdf.x,'lat':centroid_gdf.y})
+            center = centroid_df[['lat','lon']].mean(axis=0)
+            ax = folium.Map(
+                location=(center['lat'],center['lon']),
+                zoom_start=zoom,
+                tiles = map_style)
+        
+        folium.Choropleth(
+            geo_data=gdf.to_json(),
+            data=gdf[['index','level']],
+            columns=['index','level'],
+            key_on='feature.properties.index',
+            fill_color=fill_color, 
+            fill_opacity=fill_opacity, 
+            line_opacity=line_opacity,
+            legend_name='Level [ft]',
+        ).add_to(ax)
+        
+        folium.LayerControl().add_to(ax)
+        #LocateControl().add_to(map_folium)
+        MeasureControl().add_to(ax)
+        MousePosition().add_to(ax)
+        
+        return ax
 
     def get_contours_area(self,levels=None,n=10, group=True,c=2.4697887e-4):
 
@@ -343,6 +390,8 @@ class Surface(BaseModel):
         _zf = _z[~np.isnan(_z)] 
 
         return griddata((_xf,_yf),_zf,(x,y), method=method)
+    
+
 
 class SurfacesGroup(BaseModel):
     surfaces: Dict[str,Surface] = Field(None)
