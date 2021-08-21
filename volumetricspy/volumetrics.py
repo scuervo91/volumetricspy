@@ -393,7 +393,8 @@ class Surface(BaseModel):
     
 
 
-class SurfacesGroup(BaseModel):
+class SurfaceGroup(BaseModel):
+    name:str = Field(None)
     surfaces: Dict[str,Surface] = Field(None)
     
     class Config:
@@ -413,10 +414,34 @@ class SurfacesGroup(BaseModel):
             list_surfaces.append(surf)
         else:
             list_surfaces.extend(surf)
-            
-        s = {i.name:i for i in list_surfaces}
         
-        self.surfaces.update(s)
+        surf_dict = {i.name:i for i in list_surfaces}
+        
+        if self.surfaces is None:
+            self.surfaces = surf_dict
+        else:
+            self.surfaces.update(surf_dict)
+            
+    @validate_arguments  
+    def create_parallel_surfaces(
+        self,
+        base_surf:str,
+        thickness:Union[float,List[float]],
+    ):
+        list_tickness = []
+        if isinstance(thickness,list):
+            list_tickness.extend(thickness)
+        else:
+            list_tickness.append(thickness)
+        
+        list_surfaces = []
+        for i,thick in enumerate(thickness):
+            surf_copy = self.surfaces[base_surf].copy()
+            surf_copy.z = surf_copy.z + thick
+            surf_copy.name = f'{base_surf}_{thick}'
+            list_surfaces.append(surf_copy)
+        
+        self.add_surface(list_surfaces)
             
     def get_volume_bounds(self, 
         top_surface=None, 
@@ -443,7 +468,7 @@ class SurfacesGroup(BaseModel):
             top_area = self.surfaces[top_surface].get_contours_area_mesh(levels=levels,n=n,c=c,zmin=zmin, zmax=zmax)
             bottom_area = self.surfaces[bottom_surface].get_contours_area_mesh(levels=levels,n=n,c=c,zmin=zmin, zmax=zmax)
 
-        else:
+        elif method=='contours':
             top_area = self.surfaces[top_surface].get_contours_area_bounds(levels=levels,n=n,c=c,zmin=zmin, zmax=zmax)
             bottom_area = self.surfaces[bottom_surface].get_contours_area_bounds(levels=levels,n=n,c=c, zmin=zmin, zmax=zmax)
 
