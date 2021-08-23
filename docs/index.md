@@ -1,9 +1,14 @@
-# {package}
+# volumetricspy
 
-+ **Documentation** [http://scuervo91.github.io/{package}](http://scuervo91.github.io/{package})
-+ **Sorce Code** [https://github.com/scuervo91/{package}](https://github.com/scuervo91/{package})
++ **Documentation** [http://scuervo91.github.io/volumetricspy](http://scuervo91.github.io/volumetricspy)
++ **Sorce Code** [https://github.com/scuervo91/{package}](https://github.com/scuervo91/volumetricspy)
 
-{package description}
+Oil & Gas tool to estimate Original Resources in Place (OOIP OGIP) from a group of Surfaces. 
+
++ You can estimate Resources volumes probabilistically by applying MonteCarlo Simulation using Scipy built in probabilistic distributions.
++ Plot Contours maps Using Matplotlib
++ Show Locations map using Folium
++ Make 3D visualization Using PyVista
 
 
 ## Requirements
@@ -15,7 +20,7 @@
 
 
 ```console
-$ pip install {package}
+$ pip install volumetricspy
 
 ---> 100%
 ```
