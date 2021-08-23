@@ -137,3 +137,7 @@ examples/welllogs/1-basics/master.las
 examples/welllogs/1-basics/survey.csv
 examples/welllogs/2-field/*.csv
 *.xlsx
+lower
+docs/examples/1-Surfaces/upper
+docs/examples/1-Surfaces/lower
+docs/examples/1-Surfaces/anticline
