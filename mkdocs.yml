@@ -17,12 +17,19 @@ theme:
 
 nav:
   - Home: index.md
+  - Tutorial:
+    - Surfaces:
+      - Single Surface: examples/1-Surfaces/1-Surfaces.ipynb
+      - Group of Surfaces: examples/1-Surfaces/2-SurfaceGroup.ipynb
+    - Montecarlo:
+      - Probabilistic Variables: examples/2-Montecarlo/1-ProbVar.ipynb
 
 repo_url: https://github.com/scuervo91/Volumetricspy
 repo_name: scuervo91/volumetricspy
 
 plugins:
   - search
+  - mkdocs-jupyter
 
 markdown_extensions:
   - admonition
