@@ -68,6 +68,8 @@ class MonteCarlo(BaseModel):
             list_vars.append(var_values)
         
         vars_df[self.name] = self.func(*list_vars)
+        if ppf is not None:
+            vars_df.index = ppf
             
         return vars_df
         
