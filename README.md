@@ -9,6 +9,7 @@ Oil & Gas tool to estimate Original Resources in Place (OOIP OGIP) from a group 
 + Plot Contours maps Using Matplotlib
 + Show Locations map using Folium
 + Make 3D visualization Using PyVista
++ Make Montecarlo Simulation for resources
 
 
 ## Requirements
