@@ -1,7 +1,7 @@
-# volumetricspy
+# Volumetricspy
 
 + **Documentation** [http://scuervo91.github.io/volumetricspy](http://scuervo91.github.io/volumetricspy)
-+ **Sorce Code** [https://github.com/scuervo91/{package}](https://github.com/scuervo91/volumetricspy)
++ **Sorce Code** [https://github.com/scuervo91/volumetricspy](https://github.com/scuervo91/volumetricspy)
 
 Oil & Gas tool to estimate Original Resources in Place (OOIP OGIP) from a group of Surfaces. 
 
