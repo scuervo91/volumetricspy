@@ -1,0 +1,68 @@
+from pydantic import BaseModel, Field, validate_arguments
+import numpy as np
+import pandas as pd
+import geopandas as gpd
+from shapely.geometry import Point
+from typing import List, Dict, Tuple, Optional, Union
+
+
+class Dot(BaseModel):
+    x: float
+    y: Optional[float] = Field(None)
+    z: Optional[float] = Field(None)
+    crs: Optional[int] = Field(None)
+    fields: Optional[Dict[str, Union[float,str]]] = Field(None)
+    
+    class Config:
+        extra = 'ignore'
+        validate_assignment = True
+        
+    def df(self, to_crs:int=None):
+        dict_point = self.dict(exclude=({'fields'}))
+        
+        if self.fields is not None:
+            dict_point.update(self.fields)
+        
+        df = gpd.GeoDataFrame(dict_point , index=[0], geometry = gpd.points_from_xy([self.x], [self.y]), crs=self.crs)
+        
+        if to_crs is not None:
+            df = df.to_crs(to_crs)
+        
+        return df
+    
+    def to_shapely(self):
+        c = []
+        for i in [self.x, self.y, self.z]:
+            if i is not None:
+                c.append(i)
+        
+        return Point(*c)
+            
+class CloudPoints(BaseModel):
+    points: Optional[List[Dot]] = Field(None)
+    
+    class Config:
+        extra = 'ignore'
+        validate_assignment = True
+        
+    @validate_arguments(config=dict(arbitrary_types_allowed=True))
+    def add_point(self,dots:Union[List[Dot], Dot]):
+        
+        if isinstance(dots, Dot):
+            dots = [dots]
+        
+        if self.points is None:
+            self.points = dots
+        else:
+            self.points = self.points + dots
+            
+    def to_df(self, to_crs:int=None):
+        df = gpd.GeoDataFrame()
+        for dot in self.points:
+            df = df.append(dot.df(to_crs=to_crs))
+            
+        return df
+    
+    def to_shapely(self):
+        return [dot.to_shapely() for dot in self.points]
+
