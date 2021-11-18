@@ -52,9 +52,9 @@ class Dot(BaseModel):
     @validate_arguments
     def add_field(self, d = Dict[str, Union[float,str]]):
         if self.fields is None:
-            self.field = d
+            self.fields = d
         else:
-            self.field.update(d)
+            self.fields.update(d)
             
 class CloudPoints(BaseModel):
     points: Optional[List[Dot]] = Field(None)
@@ -74,7 +74,7 @@ class CloudPoints(BaseModel):
         else:
             self.points = self.points + dots
             
-    def to_df(self, to_crs:int=None):
+    def df(self, to_crs:int=None):
         df = gpd.GeoDataFrame()
         for dot in self.points:
             df = df.append(dot.df(to_crs=to_crs))
@@ -87,9 +87,9 @@ class CloudPoints(BaseModel):
     def to_numpy(self):
         return np.vstack([dot.to_numpy() for dot in self.points])
     
-    def poly_declusterin(self):
-        df = self.to_df().reset_index(drop=True)
-        vr = Voronoi(df[['X','Y']].values)
+    def poly_declustering(self):
+        df = self.df().reset_index(drop=True)
+        vr = Voronoi(df[['x','y']].values)
         
         vertices = vr.vertices
         regions = vr.regions 
@@ -109,6 +109,8 @@ class CloudPoints(BaseModel):
         
         for i,r in df.iterrows():
             self.points[i].add_field(d = {'area': r['areas'], 'weight': r['weights']})
+            
+        return self
             
         
         
