@@ -4,6 +4,9 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Point
 from typing import List, Dict, Tuple, Optional, Union
+from scipy.spatial import Voronoi
+
+from ..utils import poly_area
 
 
 class Dot(BaseModel):
@@ -37,6 +40,21 @@ class Dot(BaseModel):
                 c.append(i)
         
         return Point(*c)
+    
+    def to_numpy(self):
+        c = []
+        for i in [self.x, self.y, self.z]:
+            if i is not None:
+                c.append(i)
+        
+        return np.array(c)
+    
+    @validate_arguments
+    def add_field(self, d = Dict[str, Union[float,str]]):
+        if self.fields is None:
+            self.field = d
+        else:
+            self.field.update(d)
             
 class CloudPoints(BaseModel):
     points: Optional[List[Dot]] = Field(None)
@@ -65,4 +83,35 @@ class CloudPoints(BaseModel):
     
     def to_shapely(self):
         return [dot.to_shapely() for dot in self.points]
+    
+    def to_numpy(self):
+        return np.vstack([dot.to_numpy() for dot in self.points])
+    
+    def poly_declusterin(self):
+        df = self.to_df().reset_index(drop=True)
+        vr = Voronoi(df[['X','Y']].values)
+        
+        vertices = vr.vertices
+        regions = vr.regions 
+        areas = []
+        for region in regions:
+            if len(region) == 0:
+                continue
+            
+            vertices_region = vertices[region,:]
+            vertices_region = np.vstack((vertices_region, vertices_region[0,:]))
+            area_region = poly_area(vertices_region[:,0], vertices_region[:,1])
+            
+            areas.append(area_region)
+        
+        df['areas'] = areas
+        df['weights'] = df['areas']/df['areas'].sum()
+        
+        for i,r in df.iterrows():
+            self.points[i].add_field(d = {'area': r['areas'], 'weight': r['weights']})
+            
+        
+        
+        
+        
 

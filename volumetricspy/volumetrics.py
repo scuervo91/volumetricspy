@@ -12,8 +12,9 @@ from pydantic import BaseModel, Field, validator, validate_arguments
 from typing import Dict, Tuple, List, Union
 import folium
 from folium.plugins import MeasureControl,MousePosition
-def poly_area(x,y):
-    return 0.5*np.abs(np.dot(x,np.roll(y,1))-np.dot(y,np.roll(x,1)))
+
+from .utils import poly_area
+
 
 class Surface(BaseModel):
     name: str = Field(...)
