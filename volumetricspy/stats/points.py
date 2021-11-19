@@ -4,7 +4,8 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Point
 from typing import List, Dict, Tuple, Optional, Union
-from scipy.spatial import Voronoi
+from scipy.spatial import Voronoi, voronoi_plot_2d
+import matplotlib.pyplot as plt
 
 from ..utils import poly_area
 
@@ -81,15 +82,48 @@ class CloudPoints(BaseModel):
             
         return df
     
+    @validate_arguments(config=dict(arbitrary_types_allowed=True))
+    def from_df(
+        self, 
+        df:pd.DataFrame,
+        x:str='x',
+        y:Optional[str]=None,
+        z:Optional[str]=None, 
+        crs:Optional[int]=None, 
+        fields:Optional[Union[str, List[str]]]=None
+    ):
+        
+        for i,r in df.iterrows():
+            _dot = Dot(
+                x = r[x],
+                y = r[y] if y is not None else None,
+                z = r[z] if z is not None else None,
+                fields = r[fields].to_dict(),
+                crs = crs
+            )
+            self.add_point(_dot)
+            
+        return self
+    
     def to_shapely(self):
         return [dot.to_shapely() for dot in self.points]
     
     def to_numpy(self):
         return np.vstack([dot.to_numpy() for dot in self.points])
     
-    def poly_declustering(self):
+    def veronoi(self):
         df = self.df().reset_index(drop=True)
-        vr = Voronoi(df[['x','y']].values)
+        return Voronoi(df[['x','y']].values)
+    
+    def plot_veronoi(self, ax=None, **kwargs):
+        ax = ax or plt.gca()    
+        vr = self.veronoi()
+        fig = voronoi_plot_2d(vr, ax=ax, **kwargs)
+       
+    
+    def poly_declustering(self):
+       
+        vr = self.veronoi()
         
         vertices = vr.vertices
         regions = vr.regions 
@@ -103,12 +137,12 @@ class CloudPoints(BaseModel):
             area_region = poly_area(vertices_region[:,0], vertices_region[:,1])
             
             areas.append(area_region)
-        
-        df['areas'] = areas
-        df['weights'] = df['areas']/df['areas'].sum()
-        
-        for i,r in df.iterrows():
-            self.points[i].add_field(d = {'area': r['areas'], 'weight': r['weights']})
+            
+        areas_arr = np.array(areas)
+        weight_ar = areas_arr / np.sum(areas_arr)
+                
+        for i,v in enumerate(zip(areas_arr, weight_ar)):
+            self.points[i].add_field(d = {'area': v[0], 'weight': v[1]})
             
         return self
             
