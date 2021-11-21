@@ -14,6 +14,9 @@ class Variogram(BaseModel):
         gamma = self.forward(h)
         ax.plot(h,gamma, **kwargs)
         return ax
+    
+    def covariance(self,h):
+        return self.sill - self.forward(h)
 
 class Spherical(Variogram):
     
