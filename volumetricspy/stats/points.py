@@ -4,8 +4,9 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Point
 from typing import List, Dict, Tuple, Optional, Union
-from scipy.spatial import Voronoi, voronoi_plot_2d
+from scipy.spatial import Voronoi, voronoi_plot_2d, distance_matrix
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 from ..utils import poly_area
 
@@ -57,6 +58,12 @@ class Dot(BaseModel):
         else:
             self.fields.update(d)
             
+    def add_field(self, key, value):
+        if self.fields is None:
+            self.fields = {key:value}
+        else:
+            self.fields[key] = value
+            
 class CloudPoints(BaseModel):
     points: Optional[List[Dot]] = Field(None)
     
@@ -98,12 +105,26 @@ class CloudPoints(BaseModel):
                 x = r[x],
                 y = r[y] if y is not None else None,
                 z = r[z] if z is not None else None,
-                fields = r[fields].to_dict(),
+                fields = r[fields].to_dict() if fields is not None else None,
                 crs = crs
             )
             self.add_point(_dot)
             
         return self
+    
+    def add_fields_from_df(self, df:pd.DataFrame, fields:List[str]):
+        for i,p in enumerate(self.points):
+            for f in fields:
+                p.add_field(f, df[f].iloc[i])
+        
+        return self
+    
+    def add_field(self, field:Union[List[float], np.ndarray], name:str):
+        for i,p in enumerate(self.points):
+            p.add_field(name, field[i])
+            
+        return self
+
     
     def to_shapely(self):
         return [dot.to_shapely() for dot in self.points]
@@ -119,6 +140,21 @@ class CloudPoints(BaseModel):
         ax = ax or plt.gca()    
         vr = self.veronoi()
         fig = voronoi_plot_2d(vr, ax=ax, **kwargs)
+        
+    def distance_matrix(self, other=None):
+        p = self.to_numpy()
+        
+        if other is None:
+            return distance_matrix(p, p)
+        return distance_matrix(p, other.to_numpy())
+        
+    
+    def plot(self, hue:str=None, ax=None, **kwargs):
+        ax = ax or plt.gca()
+        df = self.df()
+        
+        return sns.scatterplot(data=df, x='x', y='y', hue=hue, ax=ax, **kwargs)
+
        
     
     def poly_declustering(self):
