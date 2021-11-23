@@ -154,9 +154,18 @@ class CloudPoints(BaseModel):
         df = self.df()
         
         return sns.scatterplot(data=df, x='x', y='y', hue=hue, ax=ax, **kwargs)
+    
+    def plot_mesh(self, v:str,ax=None,**kwargs):
+        ax = ax or plt.gca()
+        df = self.df().pivot(index='y', columns='x', values=v)
+        xx, yy = np.meshgrid(df.columns, df.index)
+        
+        d = ax.pcolormesh(xx,yy,df.values, **kwargs)
+        plt.colorbar(d)
+        
+        return ax       
 
        
-    
     def poly_declustering(self):
        
         vr = self.veronoi()
