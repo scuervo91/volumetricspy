@@ -9,7 +9,7 @@ import geopandas as gpd
 from shapely.geometry import MultiPolygon, Polygon
 from zmapio import ZMAPGrid
 from pydantic import BaseModel, Field, validator, validate_arguments
-from typing import Dict, Tuple, List, Union
+from typing import Dict, Tuple, List, Union,Optional
 import folium
 from folium.plugins import MeasureControl,MousePosition
 
@@ -101,6 +101,37 @@ class Surface(BaseModel):
         grid = pv.StructuredGrid(xx, yy, zz).elevation()
 
         return grid
+    
+    def make_grid_vtk(
+        self, 
+        dz:Optional[Union[float,List[float],np.ndarray]] = None, 
+        nz:Optional[int]=None
+    ):
+        mesh = self.structured_surface_vtk()
+        if isinstance(dz,(list,np.ndarray)):
+            dz = np.atleast_1d(dz)
+        else:
+            dz = np.linspace(dz,dz*nz,nz)
+            
+        list_arrays = []
+        top = mesh.points.copy()
+        list_arrays.append(top)
+        for z in dz:
+            layer = mesh.points.copy()
+            layer[:,-1] += z
+            list_arrays.append(layer)
+            
+        vol = pv.StructuredGrid()
+        vol.points = np.vstack(list_arrays)
+        vol.dimensions = [*mesh.dimensions[0:2], len(dz)]
+        vol = vol.elevation()
+        
+        return vol
+            
+            
+
+        
+        
     
     def get_contours(self,levels=None,zmin=None,zmax=None,n=10):
         
