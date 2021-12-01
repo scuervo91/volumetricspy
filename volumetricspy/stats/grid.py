@@ -890,7 +890,7 @@ class Grid(BaseModel):
         
         return center
 
-    def get_vtk(self):
+    def unstructured_grid_vtk(self):
         """
         Get the pyvista Object
         https://docs.pyvista.org/examples/00-load/create-unstructured-surface.html#sphx-glr-examples-00-load-create-unstructured-surface-py
@@ -924,7 +924,12 @@ class Grid(BaseModel):
             for i in self.spatial_data.items():
                 grid.cell_arrays[i[0]] = i[1]
 
-        return grid
+        return grid.elevation()
+    
+    def explicit_structured_grid(self):
+        
+        ugv = self.unstructured_grid_vtk()
+        return pv.ExplicitStructuredGrid(ugv.DATA_OBJECT())
 
 
 
