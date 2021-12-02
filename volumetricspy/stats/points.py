@@ -22,7 +22,7 @@ class Dot(BaseModel):
         extra = 'ignore'
         validate_assignment = True
         
-    def gdf(self, cols=None,to_crs:int=None):
+    def gdf(self,to_crs:int=None):
         dict_point = self.dict(exclude=({'fields'}))
         
         if self.fields is not None:
@@ -32,10 +32,7 @@ class Dot(BaseModel):
         
         if to_crs is not None:
             df = df.to_crs(to_crs)
-        
-        if cols is not None:
-            df = df[cols]
-        
+                
         return df
     
     def df(self):
@@ -109,18 +106,18 @@ class CloudPoints(BaseModel):
             self.points = self.points + dots
 
     def df(self):
-        df = pd.DataFrame()
+        df_list = []
         for dot in self.points:
-            df = df.append(dot.df())
-            
-        return df.reset_index(drop=True)
+            df_list.append(dot.df())
+        
+        return pd.concat(df_list, axis=0).reset_index(drop=True)
 
-    def gdf(self, cols = None,to_crs:int=None):
-        df = gpd.GeoDataFrame()
+    def gdf(self,to_crs:int=None):
+        gdf_list = []
         for dot in self.points:
-            df = df.append(dot.df(cols=cols,to_crs=to_crs))
+            gdf_list.append(dot.gdf(to_crs=to_crs))
             
-        return df.reset_index(drop=True)
+        return gpd.GeoDataFrame(pd.concat(gdf_list, axis=0).reset_index(drop=True))
     
     @validate_arguments(config=dict(arbitrary_types_allowed=True))
     def from_df(

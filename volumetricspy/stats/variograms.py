@@ -88,10 +88,14 @@ class Variogram(BaseModel):
             unknown.points[r['unkown_idx']].add_fields({v:r[v]})
             
         unknowns_df = unknown.df()
+        n_total = unknowns_df.shape[0]
         unknowns_df = unknowns_df[unknowns_df[v].isnull()].sample(frac=1, random_state=seed)
-
+        n_unknowns = unknowns_df.shape[0]
+        
+        print(f'{n_total} total points, {n_unknowns} unknown points')
+        
         for i,r in unknowns_df.iterrows():
-            print(i)
+
             #extract the unknown point to be interpolated
             unknown_point = unknown.subset(i)
             
@@ -116,7 +120,11 @@ class Variogram(BaseModel):
             krige_point = self.ordinary_kriging(known_points_krige, unknown_point, v)
             
             #monecarlo simulation
-            mc_value = norm.rvs(loc=0,scale=krige_point.points[0].fields[f'{v}_variance'],size=1)
+            mc_value = norm.rvs(
+                loc=krige_point.points[0].fields[f'{v}'],
+                scale=krige_point.points[0].fields[f'{v}_variance'],
+                size=1
+            )
             #add the value to the unknown point
             unknown.points[i].add_fields({v:mc_value})
             
