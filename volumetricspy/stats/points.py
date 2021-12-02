@@ -22,7 +22,7 @@ class Dot(BaseModel):
         extra = 'ignore'
         validate_assignment = True
         
-    def df(self, to_crs:int=None):
+    def gdf(self, cols=None,to_crs:int=None):
         dict_point = self.dict(exclude=({'fields'}))
         
         if self.fields is not None:
@@ -33,6 +33,18 @@ class Dot(BaseModel):
         if to_crs is not None:
             df = df.to_crs(to_crs)
         
+        if cols is not None:
+            df = df[cols]
+        
+        return df
+    
+    def df(self):
+        dict_point = self.dict(exclude=({'fields'}))
+        
+        if self.fields is not None:
+            dict_point.update(self.fields)
+        
+        df = pd.DataFrame(dict_point , index=[0])
         return df
     
     def to_shapely(self):
@@ -52,7 +64,7 @@ class Dot(BaseModel):
         return np.array(c)
     
     @validate_arguments
-    def add_field(self, d = Dict[str, Union[float,str]]):
+    def add_fields(self, d = Dict[str, Union[float,str]]):
         if self.fields is None:
             self.fields = d
         else:
@@ -77,6 +89,14 @@ class CloudPoints(BaseModel):
     def sample(self, n:int):
         return CloudPoints(points=np.random.choice(self.points, n, replace=False).tolist())
     
+    def subset(self, idx:Union[int, List[int]]):
+        if isinstance(idx, int):
+            idx = [idx]
+        
+        p = [self.points[i] for i in idx]
+            
+        return CloudPoints(points=p)
+    
     @validate_arguments(config=dict(arbitrary_types_allowed=True))
     def add_point(self,dots:Union[List[Dot], Dot]):
         
@@ -87,11 +107,18 @@ class CloudPoints(BaseModel):
             self.points = dots
         else:
             self.points = self.points + dots
+
+    def df(self):
+        df = pd.DataFrame()
+        for dot in self.points:
+            df = df.append(dot.df())
             
-    def df(self, to_crs:int=None):
+        return df.reset_index(drop=True)
+
+    def gdf(self, cols = None,to_crs:int=None):
         df = gpd.GeoDataFrame()
         for dot in self.points:
-            df = df.append(dot.df(to_crs=to_crs))
+            df = df.append(dot.df(cols=cols,to_crs=to_crs))
             
         return df.reset_index(drop=True)
     

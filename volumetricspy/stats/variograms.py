@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Tuple, Optional, Union
 import matplotlib.pyplot as plt
 from scipy.linalg import solve 
+from scipy.stats import norm
 from .points import CloudPoints
 
 class Variogram(BaseModel):
@@ -65,6 +66,73 @@ class Variogram(BaseModel):
         
         return unknown
             
+    def sgs(
+        self, 
+        known:CloudPoints,
+        unknown:CloudPoints,
+        v:str,
+        max_distance: float = None,
+        seed: int = None,
+    ):
+
+        #Distance matrx between known and unknown points. Known points are the rows and unknown points are the columns
+        kudm = known.distance_matrix(unknown)
+        
+        # Get the minimum point distance for each known point to the unknown points
+        known_df = known.df()
+        known_df['unkown_idx'] = np.argmin(kudm, axis=1)
+        known_df = known_df[~known_df.duplicated(subset=['unkown_idx'])]
+        
+        #assing the value of variable of interest to the unknown points based on the minimum distance removing duplicates
+        for i,r in known_df.iterrows():
+            unknown.points[r['unkown_idx']].add_fields({v:r[v]})
+            
+        unknowns_df = unknown.df()
+        unknowns_df = unknowns_df[unknowns_df[v].isnull()].sample(frac=1, random_state=seed)
+
+        for i,r in unknowns_df.iterrows():
+            print(i)
+            #extract the unknown point to be interpolated
+            unknown_point = unknown.subset(i)
+            
+            #extract the known points that are close to the unknown point
+            knowns_df = unknown.df()
+            knowns_df = knowns_df[knowns_df[v].notna()]
+            if max_distance is not None:
+                unknowns_cp = unknown.subset(knowns_df.index)
+                
+                distances = unknown_point.distance_matrix(unknowns_cp)
+                knowns_df['distance'] = np.squeeze(distances)
+                knowns_df = knowns_df[knowns_df['distance'] <= max_distance]
+                
+                idx_krige = knowns_df.index
+            else:
+                idx_krige = knowns_df.index
+            
+            #extract the known points to use when krigging
+            known_points_krige = unknown.subset(idx_krige)
+            #make krigging
+
+            krige_point = self.ordinary_kriging(known_points_krige, unknown_point, v)
+            
+            #monecarlo simulation
+            mc_value = norm.rvs(loc=0,scale=krige_point.points[0].fields[f'{v}_variance'],size=1)
+            #add the value to the unknown point
+            unknown.points[i].add_fields({v:mc_value})
+            
+        return unknown
+            
+            
+        
+        
+        
+        
+
+        
+        
+        
+        
+        
 class Spherical(Variogram):
     
     def forward(self, h):
