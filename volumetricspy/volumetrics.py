@@ -76,7 +76,7 @@ class Surface(BaseModel):
         self.crs=crs
     
     def get_mesh(self):
-        yy, xx = np.meshgrid(self.y, self.x)
+        xx, yy = np.meshgrid(self.x, self.y, indexing='ij')
         zz = self.z.reshape(self.shape)
         return xx, yy, zz
 
