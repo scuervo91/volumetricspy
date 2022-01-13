@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "volumetricspy"
-version = "0.1.1"
+version = "0.1.2"
 description = "Oil & Gas Tool for estimating Original in Place Resources"
 authors = ["Santiago Cuervo <scuervo91@gmail.com>"]
 license = "MIT"
@@ -23,6 +23,7 @@ folium = "^0.12.1"
 [tool.poetry.dev-dependencies]
 notebook = "^6.4.3"
 mkdocs-material = "^7.2.4"
+ipyvtklink = "^0.2.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

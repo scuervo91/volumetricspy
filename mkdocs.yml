@@ -23,6 +23,14 @@ nav:
       - Group of Surfaces: examples/1-Surfaces/2-SurfaceGroup.ipynb
     - Montecarlo:
       - Probabilistic Variables: examples/2-Montecarlo/1-ProbVar.ipynb
+    - Basic Geostats:
+      - Points: examples/3-Points/points.ipynb
+      - Variogram: examples/3-Points/variograms.ipynb
+      - Krigging: examples/3-Points/krigging.ipynb
+      - Sequential Gaussian Simulation: examples/3-Points/sgs.ipynb
+      - Transforms: examples/3-Points/transforms.ipynb
+  - Releases Notes: release_notes.md
+
 
 repo_url: https://github.com/scuervo91/Volumetricspy
 repo_name: scuervo91/volumetricspy

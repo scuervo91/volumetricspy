@@ -9,11 +9,12 @@ import geopandas as gpd
 from shapely.geometry import MultiPolygon, Polygon
 from zmapio import ZMAPGrid
 from pydantic import BaseModel, Field, validator, validate_arguments
-from typing import Dict, Tuple, List, Union
+from typing import Dict, Tuple, List, Union,Optional
 import folium
 from folium.plugins import MeasureControl,MousePosition
-def poly_area(x,y):
-    return 0.5*np.abs(np.dot(x,np.roll(y,1))-np.dot(y,np.roll(x,1)))
+
+from .utils import poly_area
+from .stats import Grid
 
 class Surface(BaseModel):
     name: str = Field(...)
@@ -32,14 +33,14 @@ class Surface(BaseModel):
        
     @validator('x')
     def check_shape(cls,v,values):
-        length = values['shape'][1]
+        length = values['shape'][0]
         assert v.ndim == 1
         assert v.shape[0] == length, f'Shape mismatch: {v.shape} != {length}'
         return v
 
     @validator('y')
     def check_shape(cls,v,values):
-        length = values['shape'][0]
+        length = values['shape'][1]
         assert v.ndim == 1
         assert v.shape[0] == length, f'Shape mismatch: {v.shape} != {length}'
         return v
@@ -64,18 +65,18 @@ class Surface(BaseModel):
         z_file = ZMAPGrid(value)
         z_df = z_file.to_dataframe().dropna()
         z_df['Z'] *= factor_z
-        p = z_df.pivot(index='Y',columns='X',values='Z')
+        p = z_df.pivot(index='X',columns='Y',values='Z')
         p.sort_index(axis=0, inplace=True)
         p.sort_index(axis=1, inplace=True)
 
-        self.x = np.array(p.columns)
-        self.y = np.array(p.index)
+        self.y = np.array(p.columns)
+        self.x = np.array(p.index)
         self.z = p.values.flatten()
         self.shape = p.values.shape
         self.crs=crs
     
     def get_mesh(self):
-        xx, yy = np.meshgrid(self.x, self.y)
+        xx, yy = np.meshgrid(self.x, self.y, indexing='ij')
         zz = self.z.reshape(self.shape)
         return xx, yy, zz
 
@@ -101,6 +102,50 @@ class Surface(BaseModel):
 
         return grid
     
+    def make_grid(
+        self, 
+        dz:Optional[Union[float,List[float],np.ndarray]] = None, 
+        nz:Optional[int]=None
+    ):
+        
+        if isinstance(dz,(list,np.ndarray)):
+            dz = np.atleast_1d(dz).reshape(1,1,-1).reshape(1,1,-1)
+        else:
+            dz = np.linspace(0,dz*nz,nz).reshape(1,1,-1).reshape(1,1,-1)
+
+        nz = dz.shape[2]
+        nx, ny = self.shape
+        xx,yy,zz = self.get_mesh()
+        z = zz.reshape(*zz.shape,1)
+        z = dz + z
+
+        z = z.repeat(2, axis=0)[1:-1,:,:]
+        z = z.repeat(2, axis=1)[:,1:-1,:]
+        z = z.repeat(2, axis=2)[:,:,1:-1]
+
+        zcorn = z.flatten(order='F')
+        
+        xx_f = xx.flatten(order='F')
+        yy_f = yy.flatten(order='F')
+        zz_f = zz.flatten(order='F')
+
+        coords = pd.DataFrame({'x1':xx_f,'y1':yy_f,'z1':zz_f})
+        coords[['x2','y2']] = coords[['x1','y1']]
+        coords['z2'] = coords['z1'] - 250
+        coords_f = coords.values.flatten(order='C')
+        
+        grid = Grid(
+            nx = nx-1,
+            ny = ny-1,
+            nz = nz-1,
+            coord=coords_f.tolist(), 
+            zcorn=zcorn.tolist(), 
+            grid_type='corner_point'
+        )
+        
+        return grid
+            
+        
     def get_contours(self,levels=None,zmin=None,zmax=None,n=10):
         
         #define levels
@@ -211,9 +256,9 @@ class Surface(BaseModel):
         else:
             levels = np.linspace(zmin,zmax,n)
         xx, yy, zz = self.get_mesh()
-        dif_x = np.diff(xx,axis=1).mean(axis=0)
-        dif_y = np.diff(yy,axis=0).mean(axis=1)
-        dxx, dyy = np.meshgrid(dif_x,dif_y) 
+        dif_x = np.diff(xx,axis=0).mean(axis=1)
+        dif_y = np.diff(yy,axis=1).mean(axis=0)
+        dyy, dxx = np.meshgrid(dif_y,dif_x) 
         
         area_dict = {}
         for i in levels:
