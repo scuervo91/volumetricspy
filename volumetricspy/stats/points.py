@@ -155,7 +155,14 @@ class CloudPoints(BaseModel):
             
         return self
 
-    
+    def one_hot_encode(self, field:str):
+        
+        df = self.df()
+        oh = pd.get_dummies(df[field])
+        
+        return self.add_fields_from_df(oh, list(oh.columns))
+        
+        
     def to_shapely(self):
         return [dot.to_shapely() for dot in self.points]
     
