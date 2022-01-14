@@ -926,6 +926,7 @@ class Grid(BaseModel):
 
         return grid.elevation()
     
+    #! Not working
     def explicit_structured_grid(self):
         
         ugv = self.unstructured_grid_vtk()
