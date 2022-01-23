@@ -91,26 +91,24 @@ class IndicatorOridinaryKrigging(KriggingBase):
     def forward(
         self,
         v: str,
-        variogram_model: Optional[Union[variogram_types,Dict[str,variogram_types]]] = Field(None),
+        variogram_model: Optional[Union[variogram_types,Dict[str,variogram_types]]] = None,
         argmax: bool = True,
     ):
         if variogram_model is None:
-            print('variogram_model is None')
             variogram_model = self.variogram_model
         #variogram_model = variogram_model or self.variogram_model
-        print(f'variogram_model: {variogram_model}')
         #convert the indicator variable to one hot encoding
         kn = self.known_cp.one_hot_encode(v)
         
         # List of categorical variables
         cats = kn.df()[v].unique().tolist()
-        
+        ukn = self.unknown_cp.copy()
         for i in cats:
             ukn = ordinary_krigging(
                 i,
                 variogram_model=variogram_model[i] if isinstance(variogram_model,dict) else variogram_model,
                 known_cp = kn,
-                unknown_cp=self.unknown_cp 
+                unknown_cp=ukn
             )
             
         if argmax:
