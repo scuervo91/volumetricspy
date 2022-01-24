@@ -170,7 +170,7 @@ class CloudPoints(BaseModel):
         
         return self
     
-    def add_field(self, field:Union[List[float], np.ndarray], name:str):
+    def add_field(self, field:Union[List[Union[float,str]], np.ndarray], name:str):
         for i,p in enumerate(self.points):
             p.add_field(name, field[i])
             

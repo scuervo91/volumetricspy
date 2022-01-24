@@ -93,6 +93,7 @@ class IndicatorOridinaryKrigging(KriggingBase):
         v: str,
         variogram_model: Optional[Union[variogram_types,Dict[str,variogram_types]]] = None,
         argmax: bool = True,
+        seed = None
     ):
         if variogram_model is None:
             variogram_model = self.variogram_model
@@ -115,6 +116,15 @@ class IndicatorOridinaryKrigging(KriggingBase):
             pred = ukn.df()[cats].idxmax(axis=1).to_frame()
             pred.columns=[v]
             ukn.add_fields_from_df(pred, [v])
+        else:
+            rng = np.random.default_rng(seed=seed)
+            preds = []
+            for i, r in ukn.df().iterrows():
+                weights = r[cats].values.astype(float)
+                probs = np.exp(weights)/np.exp(weights).sum()
+                pred = rng.choice(cats, p=probs)
+                preds.append(pred)
+            ukn.add_field(preds, v)
             
         return ukn
             
