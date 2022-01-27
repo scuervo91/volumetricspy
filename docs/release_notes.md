@@ -6,7 +6,7 @@
 * Add Sequential Gaussian Simulation Class
 
 ### Fixes
-* 
+* General Bug Fixes
 
 
 ## 0.1.2
