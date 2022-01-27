@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validate_arguments
+from pydantic import BaseModel, Field, validate_arguments, PrivateAttr
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -75,10 +75,31 @@ class Dot(BaseModel):
             
 class CloudPoints(BaseModel):
     points: Optional[List[Dot]] = Field(None)
+    __num__: int = PrivateAttr(0)
     
     class Config:
         extra = 'ignore'
         validate_assignment = True
+    
+    def __len__(self):
+        if self.points is None:
+            return 0
+        return len(self.points)
+    
+    def __getitem__(self, idx):
+        return self.points[idx]
+    
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        if self.__num__ < len(self):
+            p = self.points[self.__num__]
+            self.__num__ += 1
+            return p
+        else:
+            self.__num__ = 0
+            raise StopIteration
     
     def npoints(self):
         return len(self.points)
@@ -149,13 +170,20 @@ class CloudPoints(BaseModel):
         
         return self
     
-    def add_field(self, field:Union[List[float], np.ndarray], name:str):
+    def add_field(self, field:Union[List[Union[float,str]], np.ndarray], name:str):
         for i,p in enumerate(self.points):
             p.add_field(name, field[i])
             
         return self
 
-    
+    def one_hot_encode(self, field:str):
+        
+        df = self.df()
+        oh = pd.get_dummies(df[field])
+        
+        return self.add_fields_from_df(oh, list(oh.columns))
+        
+        
     def to_shapely(self):
         return [dot.to_shapely() for dot in self.points]
     
