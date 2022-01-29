@@ -356,15 +356,15 @@ testing = ["pytest"]
 
 [[package]]
 name = "geopandas"
-version = "0.9.0"
+version = "0.10.2"
 description = "Geographic pandas extensions"
 category = "main"
 optional = false
-python-versions = ">=3.6"
+python-versions = ">=3.7"
 
 [package.dependencies]
 fiona = ">=1.8"
-pandas = ">=0.24.0"
+pandas = ">=0.25.0"
 pyproj = ">=2.2.0"
 shapely = ">=1.6"
 
@@ -1616,7 +1616,7 @@ testing = ["coverage (>=5.0.3)", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.7,<3.10"
-content-hash = "4f10125d5b813c67221e695897525c3337c910d3ca050db79fe3b273e3015f09"
+content-hash = "c9ef95d2890d1530996648154adb594b4f964ec80c4f6a57b84edced337dca3e"
 
 [metadata.files]
 aiohttp = [
@@ -1906,8 +1906,8 @@ folium = [
     {file = "folium-0.12.1-py2.py3-none-any.whl", hash = "sha256:3d2c48dd6ffe5327975bbfd718468c4e81db9f2844c26e574f878adf4c08b644"},
 ]
 geopandas = [
-    {file = "geopandas-0.9.0-py2.py3-none-any.whl", hash = "sha256:79f6e557ba0dba76eec44f8351b1c6b42a17c38f5f08fef347e98fe4dae563c7"},
-    {file = "geopandas-0.9.0.tar.gz", hash = "sha256:63972ab4dc44c4029f340600dcb83264eb8132dd22b104da0b654bef7f42630a"},
+    {file = "geopandas-0.10.2-py2.py3-none-any.whl", hash = "sha256:1722853464441b603d9be3d35baf8bde43831424a891e82a8545eb8997b65d6c"},
+    {file = "geopandas-0.10.2.tar.gz", hash = "sha256:efbf47e70732e25c3727222019c92b39b2e0a66ebe4fe379fbe1aa43a2a871db"},
 ]
 ghp-import = [
     {file = "ghp-import-2.0.1.tar.gz", hash = "sha256:753de2eace6e0f7d4edfb3cce5e3c3b98cd52aadb80163303d1d036bda7b4483"},
