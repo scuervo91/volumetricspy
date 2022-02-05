@@ -1,5 +1,9 @@
 # Release Notes
 
+# 0.1.5
+### Fixes
+👷 add mapclassify
+
 # 0.1.4
 ### Fixes
 👷 Update Geopandas version dependency to implement 'explore' method.
