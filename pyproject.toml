@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "volumetricspy"
-version = "0.1.3"
+version = "0.1.4"
 description = "Oil & Gas Tool for estimating Original in Place Resources"
 authors = ["Santiago Cuervo <scuervo91@gmail.com>"]
 license = "MIT"

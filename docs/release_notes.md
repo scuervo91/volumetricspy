@@ -1,5 +1,9 @@
 # Release Notes
 
+# 0.1.4
+### Fixes
+👷 Update Geopandas version dependency to implement 'explore' method.
+
 ## 0.1.3
 ### Feature
 * Add Krigging classes. Oridinary Krigging and Indicator Krigging
