@@ -1,5 +1,8 @@
 # Release Notes
 
+# 0.1.6
+### Features
+* Add Inverse Weight Distance algorithm
 # 0.1.5
 ### Fixes
 👷 add mapclassify
