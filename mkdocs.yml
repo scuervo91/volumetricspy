@@ -27,6 +27,7 @@ nav:
       - Points: examples/3-Points/points.ipynb
       - Variogram: examples/3-Points/variograms.ipynb
       - Krigging: examples/3-Points/krigging.ipynb
+      - Inverse Weighted Distance: examples/3-Points/iwd.ipynb
       - Indicator Krigging: examples/3-Points/ind_krigging.ipynb
       - Sequential Gaussian Simulation: examples/3-Points/sgs.ipynb
       - Transforms: examples/3-Points/transforms.ipynb

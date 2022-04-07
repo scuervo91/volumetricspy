@@ -12,23 +12,55 @@ from .variograms import Spherical,Exponential, Gaussian
 
 variogram_types = Union[Spherical,Exponential, Gaussian]
 
+def inverse_weighted_distance(
+    known_points: CloudPoints,
+    unknown_points: CloudPoints,
+    v:str,
+    p:float = 1.0,
+    max_distance: Optional[float] = None
+):
+    
+    if v not in known_points.df().columns:
+        raise ValueError(f'{v} not in known_points.df().columns')
+    
+    unknown = unknown_points.copy(deep=True)
+    
+    kudm = known_points.distance_matrix(unknown_points)
+    
+    if max_distance is not None:
+        kudm[kudm>max_distance] = 0
+    
+    inverse_distance = 1 / np.power(kudm,p)
+    inverse_distance[np.isinf(inverse_distance)] = 0
+    
+    weights = inverse_distance/inverse_distance.sum(axis=0)
+    
+    real_values = known_points.df()[v].values.reshape(-1,1)
+    
+    pred_values = np.matmul(weights.T, real_values)
+    
+    unknown.add_field(pred_values,v)
+    
+    return unknown
+    
+
 def ordinary_krigging(
+    known_points: CloudPoints,
+    unknown_points: CloudPoints,
     v:str,
     variogram_model: Optional[variogram_types] = None,
-    known_cp: CloudPoints = None,
-    unknown_cp: CloudPoints = None,
 ):
 
-    if v not in known_cp.df().columns:
-        raise ValueError(f'{v} not in known_cp.df().columns')
+    if v not in known_points.df().columns:
+        raise ValueError(f'{v} not in known_points.df().columns')
 
     #Known Distance matrix
-    kdm = known_cp.distance_matrix()
+    kdm = known_points.distance_matrix()
     n_knowns = kdm.shape[1]
     
     #Known and Unknown Distance Matrix
-    unknown = unknown_cp.copy(deep=True)
-    kudm = known_cp.distance_matrix(unknown)
+    unknown = unknown_points.copy(deep=True)
+    kudm = known_points.distance_matrix(unknown)
     n_unknowns = kudm.shape[1]
     
     #covariance Matrix Known points
@@ -53,7 +85,7 @@ def ordinary_krigging(
         variance[i] = variogram_model.sill - np.dot(wm[:,i],cmku[:,i])
         
     #known values
-    new_values = np.dot(known_cp.df()[v].values, wm[:-1,:])
+    new_values = np.dot(known_points.df()[v].values, wm[:-1,:])
     unknown.add_field(new_values,v)
     unknown.add_field(variance,f'{v}_variance')
     
@@ -78,10 +110,11 @@ class OrdinaryKrigging(KriggingBase):
     ):
         variogram_model = variogram_model or self.variogram_model
         return ordinary_krigging(
-            v,
-            variogram_model,
             self.known_cp,
             self.unknown_cp,
+            v,
+            variogram_model,
+
         )
         
 
@@ -106,10 +139,10 @@ class IndicatorOridinaryKrigging(KriggingBase):
         ukn = self.unknown_cp.copy()
         for i in cats:
             ukn = ordinary_krigging(
+                kn,
+                ukn,
                 i,
                 variogram_model=variogram_model[i] if isinstance(variogram_model,dict) else variogram_model,
-                known_cp = kn,
-                unknown_cp=ukn
             )
             
         if argmax:
@@ -129,11 +162,22 @@ class IndicatorOridinaryKrigging(KriggingBase):
         return ukn
             
         
-        
-        
-        
-        
-        
+class IWD(KriggingBase):
+    p: float = Field(1.0, ge=1.0)
+    max_distance: Optional[float] = Field(None, gt=0.0)
     
-    
-    
+    def forward(
+        self,
+        v:str,
+        p: Optional[float] = None,
+        max_distance: Optional[float] = None
+    ):
+        max_distance = max_distance or self.max_distance
+        p = p or self.p
+        return inverse_weighted_distance(
+            self.known_cp,
+            self.unknown_cp,
+            v,
+            p,
+            max_distance
+        )
