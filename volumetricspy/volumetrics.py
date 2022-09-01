@@ -467,7 +467,7 @@ class Surface(BaseModel):
 
         if contours.empty:
             print('None contours found')
-            return pd.Series(np.zeros(levels.shape[0]), index=levels, name='area')
+            return pd.Series(np.zeros(len(levels)), index=levels, name='area')
         #dataframe
         data = pd.DataFrame()
 
@@ -624,7 +624,7 @@ class SurfaceGroup(BaseModel):
         levels=None, 
         zmin=None,
         zmax=None,
-        n=20,c=2.4697887e-4,method='mesh'):
+        n=20,c=2.4697887e-4,method='contours'):
 
         assert all([top_surface is not None,bottom_surface is not None])
 
@@ -652,6 +652,7 @@ class SurfaceGroup(BaseModel):
         area['dif_area']= np.abs(area['area_top'] - area['area_bottom'])
         area['height'] = np.diff(area.index, append=0)
         area['vol'] = area['dif_area'].multiply(area['height'])
+        area.index.name = 'level'
         rv = area['vol'].iloc[0:-1].sum()
         #area['height'] = area.index-area.index.min()
         #area['tick']=np.diff(area['height'], prepend=0)
