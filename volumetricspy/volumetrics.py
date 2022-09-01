@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, validator, validate_arguments
 from typing import Dict, Tuple, List, Union,Optional
 import folium
 from folium.plugins import MeasureControl,MousePosition
+import plotly.graph_objects as go
 
 from .utils import poly_area
 from .stats import Grid
@@ -60,23 +61,96 @@ class Surface(BaseModel):
             assert v[i].shape[0] == length, f'Shape mismatch: {v[i].shape} != {length}'
         return v
     
-    def from_z_map(self,value, factor_z = -1, crs=4326):
+    @classmethod
+    def from_z_map(
+        cls,
+        path, 
+        name:str,
+        factor_z:float = -1, 
+        crs=None
+    ):
 
-        z_file = ZMAPGrid(value)
+        z_file = ZMAPGrid(path)
         z_df = z_file.to_dataframe().dropna()
         z_df['Z'] *= factor_z
-        p = z_df.pivot(index='X',columns='Y',values='Z')
+        p = z_df.pivot(index='Y',columns='X',values='Z')
         p.sort_index(axis=0, inplace=True)
         p.sort_index(axis=1, inplace=True)
 
-        self.y = np.array(p.columns)
-        self.x = np.array(p.index)
-        self.z = p.values.flatten()
-        self.shape = p.values.shape
-        self.crs=crs
+        return cls(
+            name = name,
+            y = np.array(p.index),
+            x = np.array(p.columns),
+            z = p.values.flatten(),
+            shape = p.values.shape,
+            crs=crs
+        )
     
+    @classmethod
+    def from_df(
+        cls,
+        df:pd.DataFrame,
+        name:str,
+        factor_z = -1, 
+        crs=None,
+        fields=None,
+        **kwargs
+    ):
+        z_df = df.copy()
+        if bool(kwargs):
+            kwargs = {v: k for k, v in kwargs.items()}
+            z_df = z_df.rename(columns=kwargs)
+        
+        z_df['z'] *= factor_z
+        p = z_df.pivot(index='y',columns='x',values='z')
+        p.sort_index(axis=0, inplace=True)
+        p.sort_index(axis=1, inplace=True)
+
+        return cls(
+            name=name,
+            y = np.array(p.index),
+            x = np.array(p.columns),
+            z = p.values.flatten(),
+            shape = p.values.shape,
+            crs=crs
+        )
+    
+    @classmethod
+    def from_unstructed(
+        cls,
+        df:pd.DataFrame,
+        name:str,
+        nx:int=100,
+        ny:int=100,
+        method:str='cubic',
+        z_factor:float=-1,
+        crs:int = None,
+        **kwargs
+    ):
+        z_df = df.copy()
+        
+        if bool(kwargs):
+            kwargs = {v: k for k, v in kwargs.items()}
+            z_df = z_df.rename(columns=kwargs)
+        z_df['z'] *= z_factor
+        x_array = np.linspace(z_df['x'].min(),z_df['x'].max(),nx)
+        y_array = np.linspace(z_df['y'].min(),z_df['y'].max(),ny)
+        
+        xx, yy = np.meshgrid(x_array,y_array, indexing='xy')
+
+        grid = griddata(z_df[['x','y']].values, z_df['z'].values, (xx,yy),method=method)
+        
+        return cls(
+            name=name,
+            x = x_array,
+            y = y_array,
+            z = grid.flatten(),
+            shape = grid.shape,
+            crs=crs
+        )
+
     def get_mesh(self):
-        xx, yy = np.meshgrid(self.x, self.y, indexing='ij')
+        xx, yy = np.meshgrid(self.x, self.y, indexing='xy')
         zz = self.z.reshape(self.shape)
         return xx, yy, zz
 
@@ -109,9 +183,9 @@ class Surface(BaseModel):
     ):
         
         if isinstance(dz,(list,np.ndarray)):
-            dz = np.atleast_1d(dz).reshape(1,1,-1).reshape(1,1,-1)
+            dz = np.atleast_1d(dz).reshape(1,1,-1)
         else:
-            dz = np.linspace(0,dz*nz,nz).reshape(1,1,-1).reshape(1,1,-1)
+            dz = np.linspace(0,dz*nz,nz).reshape(1,1,-1)
 
         nz = dz.shape[2]
         nx, ny = self.shape
@@ -131,7 +205,7 @@ class Surface(BaseModel):
 
         coords = pd.DataFrame({'x1':xx_f,'y1':yy_f,'z1':zz_f})
         coords[['x2','y2']] = coords[['x1','y1']]
-        coords['z2'] = coords['z1'] - 250
+        coords['z2'] = coords['z1'] - dz.sum()
         coords_f = coords.values.flatten(order='C')
         
         grid = Grid(
@@ -357,7 +431,7 @@ class Surface(BaseModel):
         gdf = self.get_contours_gdf(levels=levels,zmin=zmin,zmax=zmax,n=n,crs=crs).reset_index()
 
         
-        if ax is None:
+        if ax is None:               
             centroid_gdf = gdf.to_crs(self.crs).centroid.to_crs(crs)
             centroid_df = pd.DataFrame({'lon':centroid_gdf.x,'lat':centroid_gdf.y})
             center = centroid_df[['lat','lon']].mean(axis=0)
@@ -436,6 +510,43 @@ class Surface(BaseModel):
 
         return griddata((_xf,_yf),_zf,(x,y), method=method)
     
+    def surface3d_trace(
+        self,
+        **kwargs
+    ):
+        _,_,z = self.get_mesh()
+        trace = go.Surface(
+            x=self.x,
+            y=self.y,
+            z=z,
+            **kwargs            
+        )
+        
+        return trace
+    
+    def plot3d(
+        self,
+        title='Surface',
+        width:float = 700,
+        height:float = 700,
+        surface_kwargs:dict={},
+        layout_kwargs:dict={}
+    ):
+        
+        traces = self.surface3d_trace(**surface_kwargs)
+        layout = go.Layout(
+            title = title,
+            scene = {
+                'xaxis': {'title': 'Easting'},
+                'yaxis': {'title': 'Northing'},
+                'zaxis': {'title': 'TVDss'}
+            },
+            width = width,
+            height = height,
+            **layout_kwargs
+        )
+        
+        return go.Figure(data=traces,layout=layout)   
 
 
 class SurfaceGroup(BaseModel):
@@ -452,6 +563,23 @@ class SurfaceGroup(BaseModel):
         assert all(x == list_epsg[0] for x in list_epsg)
         return v
 
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            return self.surfaces[key]
+        elif isinstance(key, (int,slice)):
+            return list(self.surfaces.values())[key]
+        else:
+            raise KeyError(key)
+    
+    def __len__(self):
+        return 0 if self.surfaces is None else len(self.surfaces)
+    
+    def __iter__(self):
+        return (self.surfaces[w] for w in self.surfaces)
+    
+    def surfaces_list(self):
+        return list(self.surfaces.keys())
+
     @validate_arguments
     def add_surface(self,surf:Union[Surface,List[Surface]]):
         list_surfaces = []
@@ -466,6 +594,8 @@ class SurfaceGroup(BaseModel):
             self.surfaces = surf_dict
         else:
             self.surfaces.update(surf_dict)
+            
+        return None
             
     @validate_arguments  
     def create_parallel_surfaces(
@@ -586,3 +716,40 @@ class SurfaceGroup(BaseModel):
         grid_blocks = pv.MultiBlock(data)
 
         return grid_blocks
+    
+    def plot3d(
+        self,
+        title='Surfaces',
+        surfaces:List = None,
+        width:float = 700,
+        height:float = 700,
+        surface_kwargs:dict={},
+        layout_kwargs:dict={}
+    ):
+
+        list_surfaces = []
+        if isinstance(surfaces,str):
+            list_surfaces.append(surfaces)
+        elif isinstance(surfaces,list):
+            list_surfaces.extend(surfaces)
+        else:
+            list_surfaces.extend(list(self.surfaces.keys()))
+        
+        list_traces = []
+        for i,s in enumerate(list_surfaces):
+            trace = self[s].surface3d_trace(showscale=True if i==0 else False)
+            list_traces.append(trace)
+        
+        layout = go.Layout(
+            title = title,
+            scene = {
+                'xaxis': {'title': 'Easting'},
+                'yaxis': {'title': 'Northing'},
+                'zaxis': {'title': 'TVDss'}
+            },
+            width = width,
+            height = height,
+            **layout_kwargs
+        )
+        
+        return go.Figure(data=list_traces,layout=layout)
