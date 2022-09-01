@@ -737,7 +737,7 @@ class SurfaceGroup(BaseModel):
         
         list_traces = []
         for i,s in enumerate(list_surfaces):
-            trace = self[s].surface3d_trace(showscale=True if i==0 else False)
+            trace = self[s].surface3d_trace(showscale=True if i==0 else False,**surface_kwargs)
             list_traces.append(trace)
         
         layout = go.Layout(
