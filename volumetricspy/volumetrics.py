@@ -4,7 +4,8 @@ import pyvista as pv
 import pandas as pd
 from skimage import measure
 from scipy.integrate import simps
-from scipy.interpolate import griddata
+from scipy.signal import convolve2d
+from scipy.interpolate import griddata, RegularGridInterpolator
 import geopandas as gpd
 from shapely.geometry import MultiPolygon, Polygon
 from zmapio import ZMAPGrid
@@ -600,7 +601,7 @@ class SurfaceGroup(BaseModel):
     @validate_arguments  
     def create_parallel_surfaces(
         self,
-        base_surf:str,
+        bottom_surf:str,
         thickness:Union[float,List[float]],
     ):
         list_tickness = []
@@ -611,9 +612,9 @@ class SurfaceGroup(BaseModel):
         
         list_surfaces = []
         for i,thick in enumerate(thickness):
-            surf_copy = self.surfaces[base_surf].copy()
+            surf_copy = self.surfaces[bottom_surf].copy()
             surf_copy.z = surf_copy.z + thick
-            surf_copy.name = f'{base_surf}_{thick}'
+            surf_copy.name = f'{bottom_surf}_{thick}'
             list_surfaces.append(surf_copy)
         
         self.add_surface(list_surfaces)
@@ -717,6 +718,79 @@ class SurfaceGroup(BaseModel):
         grid_blocks = pv.MultiBlock(data)
 
         return grid_blocks
+    
+    def volume_between_surfaces(
+        self,
+        top_surf:str,
+        bottom_surf:str,
+        nx:int,
+        ny:int
+    ):
+    
+        s1_x = self[top_surf].x
+        s2_x = self[bottom_surf].x
+        s1_y = self[top_surf].y
+        s2_y = self[bottom_surf].y   
+        s1_shape = self[top_surf].shape
+        s2_shape = self[bottom_surf].shape
+
+        s1_z = self[top_surf].z.reshape(s1_shape)
+        s2_z = self[bottom_surf].z.reshape(s2_shape)
+
+        max_x1 = np.nanmax(self[top_surf].x)
+        max_x2 = np.nanmax(self[bottom_surf].x)
+        max_y1 = np.nanmax(self[top_surf].y)
+        max_y2 = np.nanmax(self[bottom_surf].y)
+
+        min_x1 = np.nanmin(self[top_surf].x)
+        min_x2 = np.nanmin(self[bottom_surf].x)
+        min_y1 = np.nanmin(self[top_surf].y)
+        min_y2 = np.nanmin(self[bottom_surf].y)
+
+        min_x = np.nanmax([min_x1,min_x2])
+        max_x = np.nanmin([max_x1,max_x2])
+        min_y = np.nanmax([min_y1,min_y2])
+        max_y = np.nanmin([max_y1,max_y2])
+
+
+        nx=4
+        ny=5
+        x_arr = np.linspace(min_x,max_x,nx)
+        y_arr = np.linspace(min_y,max_y,ny)
+
+        dx = np.diff(x_arr)
+        dy = np.diff(y_arr)
+
+        dxx, dyy = np.meshgrid(dx,dy)
+
+        xx, yy = np.meshgrid(x_arr,y_arr)
+        new_points = np.column_stack((yy.flatten(),xx.flatten()))
+        interp1 = RegularGridInterpolator((s1_y, s1_x), s1_z,bounds_error=False, fill_value=np.nan)
+        interp2 = RegularGridInterpolator((s2_y, s2_x), s2_z,bounds_error=False, fill_value=np.nan)
+
+        new_df = pd.DataFrame(new_points, columns=['y','x'])
+        new_df['z1'] = interp1(new_points)
+        new_df['z2'] = interp2(new_points)
+        
+        newx = new_df['x'].values.reshape((ny,nx))
+        newy = new_df['y'].values.reshape((ny,nx))
+        newz1 = new_df['z1'].values.reshape((ny,nx))
+        newz2 = new_df['z2'].values.reshape((ny,nx))
+        
+        h1_avgx = convolve2d(newz1,np.ones((1,2)),mode='same')/2
+        h1_avgy = convolve2d(newz1,np.ones((2,1)),mode='same')/2
+        h_mean1 = np.mean([h1_avgx,h1_avgy],axis=0)[1:,1:]
+
+
+        h2_avgx = convolve2d(newz2,np.ones((1,2)),mode='same')/2
+        h2_avgy = convolve2d(newz2,np.ones((2,1)),mode='same')/2
+        h_mean2 = np.mean([h2_avgx,h2_avgy],axis=0)[1:,1:]
+
+        h_dif12 = h_mean1 - h_mean2
+        
+        vol_cel = dxx * dyy * h_dif12
+        vol = np.nansum(vol_cel)
+        return vol
     
     def plot3d(
         self,
