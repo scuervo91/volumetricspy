@@ -86,6 +86,28 @@ class Surface(BaseModel):
             shape = p.values.shape,
             crs=crs
         )
+        
+    def to_zmap(self):
+        zmap = ZMAPGrid(
+            z_values=np.flip(self.z.reshape(self.shape,order='C').T,axis=1),
+            min_x = self.x.min(),
+            max_x = self.x.max(),
+            min_y = self.y.min(),
+            max_y = self.y.max(),
+            null_value=-999.99
+        )
+        
+        zmap.comments = ['this is', 'a test']
+        zmap.nodes_per_line = 4
+        zmap.field_width = 15
+        zmap.decimal_places = 2
+        zmap.name = self.name
+        return zmap 
+    
+    def write_zmap(self, path):
+        zmap = self.to_zmap()
+        zmap.write(path)
+        return None
     
     @classmethod
     def from_df(
@@ -150,9 +172,9 @@ class Surface(BaseModel):
             crs=crs
         )
 
-    def get_mesh(self):
-        xx, yy = np.meshgrid(self.x, self.y, indexing='xy')
-        zz = self.z.reshape(self.shape)
+    def get_mesh(self, indexing='xy'):
+        xx, yy = np.meshgrid(self.x, self.y, indexing=indexing)
+        zz = self.z.reshape(xx.shape)
         return xx, yy, zz
 
     def contour(self,ax=None,**kwargs):
