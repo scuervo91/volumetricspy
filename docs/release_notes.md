@@ -1,5 +1,12 @@
 # Release Notes
 
+
+# 0.1.7
+### Features
+
+* Fix indexing mesh from 'ij' to 'xy'
+* Add feature to estimate the volume between surfaces by interpolating a regular mesh
+* Add feature to export surfaces as zmap format
 # 0.1.6
 ### Features
 * Add Inverse Weight Distance algorithm

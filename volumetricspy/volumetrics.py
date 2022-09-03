@@ -4,7 +4,8 @@ import pyvista as pv
 import pandas as pd
 from skimage import measure
 from scipy.integrate import simps
-from scipy.interpolate import griddata
+from scipy.signal import convolve2d
+from scipy.interpolate import griddata, RegularGridInterpolator
 import geopandas as gpd
 from shapely.geometry import MultiPolygon, Polygon
 from zmapio import ZMAPGrid
@@ -12,6 +13,7 @@ from pydantic import BaseModel, Field, validator, validate_arguments
 from typing import Dict, Tuple, List, Union,Optional
 import folium
 from folium.plugins import MeasureControl,MousePosition
+import plotly.graph_objects as go
 
 from .utils import poly_area
 from .stats import Grid
@@ -60,24 +62,119 @@ class Surface(BaseModel):
             assert v[i].shape[0] == length, f'Shape mismatch: {v[i].shape} != {length}'
         return v
     
-    def from_z_map(self,value, factor_z = -1, crs=4326):
+    @classmethod
+    def from_z_map(
+        cls,
+        path, 
+        name:str,
+        factor_z:float = -1, 
+        crs=None
+    ):
 
-        z_file = ZMAPGrid(value)
+        z_file = ZMAPGrid(path)
         z_df = z_file.to_dataframe().dropna()
         z_df['Z'] *= factor_z
-        p = z_df.pivot(index='X',columns='Y',values='Z')
+        p = z_df.pivot(index='Y',columns='X',values='Z')
         p.sort_index(axis=0, inplace=True)
         p.sort_index(axis=1, inplace=True)
 
-        self.y = np.array(p.columns)
-        self.x = np.array(p.index)
-        self.z = p.values.flatten()
-        self.shape = p.values.shape
-        self.crs=crs
+        return cls(
+            name = name,
+            y = np.array(p.index),
+            x = np.array(p.columns),
+            z = p.values.flatten(),
+            shape = p.values.shape,
+            crs=crs
+        )
+        
+    def to_zmap(self):
+        zmap = ZMAPGrid(
+            z_values=np.flip(self.z.reshape(self.shape,order='C').T,axis=1),
+            min_x = self.x.min(),
+            max_x = self.x.max(),
+            min_y = self.y.min(),
+            max_y = self.y.max(),
+            null_value=-999.99
+        )
+        
+        zmap.comments = ['this is', 'a test']
+        zmap.nodes_per_line = 4
+        zmap.field_width = 15
+        zmap.decimal_places = 2
+        zmap.name = self.name
+        return zmap 
     
-    def get_mesh(self):
-        xx, yy = np.meshgrid(self.x, self.y, indexing='ij')
-        zz = self.z.reshape(self.shape)
+    def write_zmap(self, path):
+        zmap = self.to_zmap()
+        zmap.write(path)
+        return None
+    
+    @classmethod
+    def from_df(
+        cls,
+        df:pd.DataFrame,
+        name:str,
+        factor_z = -1, 
+        crs=None,
+        fields=None,
+        **kwargs
+    ):
+        z_df = df.copy()
+        if bool(kwargs):
+            kwargs = {v: k for k, v in kwargs.items()}
+            z_df = z_df.rename(columns=kwargs)
+        
+        z_df['z'] *= factor_z
+        p = z_df.pivot(index='y',columns='x',values='z')
+        p.sort_index(axis=0, inplace=True)
+        p.sort_index(axis=1, inplace=True)
+
+        return cls(
+            name=name,
+            y = np.array(p.index),
+            x = np.array(p.columns),
+            z = p.values.flatten(),
+            shape = p.values.shape,
+            crs=crs
+        )
+    
+    @classmethod
+    def from_unstructed(
+        cls,
+        df:pd.DataFrame,
+        name:str,
+        nx:int=100,
+        ny:int=100,
+        method:str='cubic',
+        z_factor:float=-1,
+        crs:int = None,
+        **kwargs
+    ):
+        z_df = df.copy()
+        
+        if bool(kwargs):
+            kwargs = {v: k for k, v in kwargs.items()}
+            z_df = z_df.rename(columns=kwargs)
+        z_df['z'] *= z_factor
+        x_array = np.linspace(z_df['x'].min(),z_df['x'].max(),nx)
+        y_array = np.linspace(z_df['y'].min(),z_df['y'].max(),ny)
+        
+        xx, yy = np.meshgrid(x_array,y_array, indexing='xy')
+
+        grid = griddata(z_df[['x','y']].values, z_df['z'].values, (xx,yy),method=method)
+        
+        return cls(
+            name=name,
+            x = x_array,
+            y = y_array,
+            z = grid.flatten(),
+            shape = grid.shape,
+            crs=crs
+        )
+
+    def get_mesh(self, indexing='xy'):
+        xx, yy = np.meshgrid(self.x, self.y, indexing=indexing)
+        zz = self.z.reshape(xx.shape)
         return xx, yy, zz
 
     def contour(self,ax=None,**kwargs):
@@ -109,9 +206,9 @@ class Surface(BaseModel):
     ):
         
         if isinstance(dz,(list,np.ndarray)):
-            dz = np.atleast_1d(dz).reshape(1,1,-1).reshape(1,1,-1)
+            dz = np.atleast_1d(dz).reshape(1,1,-1)
         else:
-            dz = np.linspace(0,dz*nz,nz).reshape(1,1,-1).reshape(1,1,-1)
+            dz = np.linspace(0,dz*nz,nz).reshape(1,1,-1)
 
         nz = dz.shape[2]
         nx, ny = self.shape
@@ -131,7 +228,7 @@ class Surface(BaseModel):
 
         coords = pd.DataFrame({'x1':xx_f,'y1':yy_f,'z1':zz_f})
         coords[['x2','y2']] = coords[['x1','y1']]
-        coords['z2'] = coords['z1'] - 250
+        coords['z2'] = coords['z1'] - dz.sum()
         coords_f = coords.values.flatten(order='C')
         
         grid = Grid(
@@ -357,7 +454,7 @@ class Surface(BaseModel):
         gdf = self.get_contours_gdf(levels=levels,zmin=zmin,zmax=zmax,n=n,crs=crs).reset_index()
 
         
-        if ax is None:
+        if ax is None:               
             centroid_gdf = gdf.to_crs(self.crs).centroid.to_crs(crs)
             centroid_df = pd.DataFrame({'lon':centroid_gdf.x,'lat':centroid_gdf.y})
             center = centroid_df[['lat','lon']].mean(axis=0)
@@ -393,7 +490,7 @@ class Surface(BaseModel):
 
         if contours.empty:
             print('None contours found')
-            return pd.Series(np.zeros(levels.shape[0]), index=levels, name='area')
+            return pd.Series(np.zeros(len(levels)), index=levels, name='area')
         #dataframe
         data = pd.DataFrame()
 
@@ -436,6 +533,43 @@ class Surface(BaseModel):
 
         return griddata((_xf,_yf),_zf,(x,y), method=method)
     
+    def surface3d_trace(
+        self,
+        **kwargs
+    ):
+        _,_,z = self.get_mesh()
+        trace = go.Surface(
+            x=self.x,
+            y=self.y,
+            z=z,
+            **kwargs            
+        )
+        
+        return trace
+    
+    def plot3d(
+        self,
+        title='Surface',
+        width:float = 700,
+        height:float = 700,
+        surface_kwargs:dict={},
+        layout_kwargs:dict={}
+    ):
+        
+        traces = self.surface3d_trace(**surface_kwargs)
+        layout = go.Layout(
+            title = title,
+            scene = {
+                'xaxis': {'title': 'Easting'},
+                'yaxis': {'title': 'Northing'},
+                'zaxis': {'title': 'TVDss'}
+            },
+            width = width,
+            height = height,
+            **layout_kwargs
+        )
+        
+        return go.Figure(data=traces,layout=layout)   
 
 
 class SurfaceGroup(BaseModel):
@@ -452,6 +586,23 @@ class SurfaceGroup(BaseModel):
         assert all(x == list_epsg[0] for x in list_epsg)
         return v
 
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            return self.surfaces[key]
+        elif isinstance(key, (int,slice)):
+            return list(self.surfaces.values())[key]
+        else:
+            raise KeyError(key)
+    
+    def __len__(self):
+        return 0 if self.surfaces is None else len(self.surfaces)
+    
+    def __iter__(self):
+        return (self.surfaces[w] for w in self.surfaces)
+    
+    def surfaces_list(self):
+        return list(self.surfaces.keys())
+
     @validate_arguments
     def add_surface(self,surf:Union[Surface,List[Surface]]):
         list_surfaces = []
@@ -467,10 +618,12 @@ class SurfaceGroup(BaseModel):
         else:
             self.surfaces.update(surf_dict)
             
+        return None
+            
     @validate_arguments  
     def create_parallel_surfaces(
         self,
-        base_surf:str,
+        bottom_surf:str,
         thickness:Union[float,List[float]],
     ):
         list_tickness = []
@@ -481,9 +634,9 @@ class SurfaceGroup(BaseModel):
         
         list_surfaces = []
         for i,thick in enumerate(thickness):
-            surf_copy = self.surfaces[base_surf].copy()
+            surf_copy = self.surfaces[bottom_surf].copy()
             surf_copy.z = surf_copy.z + thick
-            surf_copy.name = f'{base_surf}_{thick}'
+            surf_copy.name = f'{bottom_surf}_{thick}'
             list_surfaces.append(surf_copy)
         
         self.add_surface(list_surfaces)
@@ -494,7 +647,7 @@ class SurfaceGroup(BaseModel):
         levels=None, 
         zmin=None,
         zmax=None,
-        n=20,c=2.4697887e-4,method='mesh'):
+        n=20,c=2.4697887e-4,method='contours'):
 
         assert all([top_surface is not None,bottom_surface is not None])
 
@@ -522,6 +675,7 @@ class SurfaceGroup(BaseModel):
         area['dif_area']= np.abs(area['area_top'] - area['area_bottom'])
         area['height'] = np.diff(area.index, append=0)
         area['vol'] = area['dif_area'].multiply(area['height'])
+        area.index.name = 'level'
         rv = area['vol'].iloc[0:-1].sum()
         #area['height'] = area.index-area.index.min()
         #area['tick']=np.diff(area['height'], prepend=0)
@@ -586,3 +740,113 @@ class SurfaceGroup(BaseModel):
         grid_blocks = pv.MultiBlock(data)
 
         return grid_blocks
+    
+    def volume_between_surfaces(
+        self,
+        top_surf:str,
+        bottom_surf:str,
+        nx:int,
+        ny:int
+    ):
+    
+        s1_x = self[top_surf].x
+        s2_x = self[bottom_surf].x
+        s1_y = self[top_surf].y
+        s2_y = self[bottom_surf].y   
+        s1_shape = self[top_surf].shape
+        s2_shape = self[bottom_surf].shape
+
+        s1_z = self[top_surf].z.reshape(s1_shape)
+        s2_z = self[bottom_surf].z.reshape(s2_shape)
+
+        max_x1 = np.nanmax(self[top_surf].x)
+        max_x2 = np.nanmax(self[bottom_surf].x)
+        max_y1 = np.nanmax(self[top_surf].y)
+        max_y2 = np.nanmax(self[bottom_surf].y)
+
+        min_x1 = np.nanmin(self[top_surf].x)
+        min_x2 = np.nanmin(self[bottom_surf].x)
+        min_y1 = np.nanmin(self[top_surf].y)
+        min_y2 = np.nanmin(self[bottom_surf].y)
+
+        min_x = np.nanmax([min_x1,min_x2])
+        max_x = np.nanmin([max_x1,max_x2])
+        min_y = np.nanmax([min_y1,min_y2])
+        max_y = np.nanmin([max_y1,max_y2])
+
+
+        nx=4
+        ny=5
+        x_arr = np.linspace(min_x,max_x,nx)
+        y_arr = np.linspace(min_y,max_y,ny)
+
+        dx = np.diff(x_arr)
+        dy = np.diff(y_arr)
+
+        dxx, dyy = np.meshgrid(dx,dy)
+
+        xx, yy = np.meshgrid(x_arr,y_arr)
+        new_points = np.column_stack((yy.flatten(),xx.flatten()))
+        interp1 = RegularGridInterpolator((s1_y, s1_x), s1_z,bounds_error=False, fill_value=np.nan)
+        interp2 = RegularGridInterpolator((s2_y, s2_x), s2_z,bounds_error=False, fill_value=np.nan)
+
+        new_df = pd.DataFrame(new_points, columns=['y','x'])
+        new_df['z1'] = interp1(new_points)
+        new_df['z2'] = interp2(new_points)
+        
+        newx = new_df['x'].values.reshape((ny,nx))
+        newy = new_df['y'].values.reshape((ny,nx))
+        newz1 = new_df['z1'].values.reshape((ny,nx))
+        newz2 = new_df['z2'].values.reshape((ny,nx))
+        
+        h1_avgx = convolve2d(newz1,np.ones((1,2)),mode='same')/2
+        h1_avgy = convolve2d(newz1,np.ones((2,1)),mode='same')/2
+        h_mean1 = np.mean([h1_avgx,h1_avgy],axis=0)[1:,1:]
+
+
+        h2_avgx = convolve2d(newz2,np.ones((1,2)),mode='same')/2
+        h2_avgy = convolve2d(newz2,np.ones((2,1)),mode='same')/2
+        h_mean2 = np.mean([h2_avgx,h2_avgy],axis=0)[1:,1:]
+
+        h_dif12 = h_mean1 - h_mean2
+        
+        vol_cel = dxx * dyy * h_dif12
+        vol = np.nansum(vol_cel)
+        return vol
+    
+    def plot3d(
+        self,
+        title='Surfaces',
+        surfaces:List = None,
+        width:float = 700,
+        height:float = 700,
+        surface_kwargs:dict={},
+        layout_kwargs:dict={}
+    ):
+
+        list_surfaces = []
+        if isinstance(surfaces,str):
+            list_surfaces.append(surfaces)
+        elif isinstance(surfaces,list):
+            list_surfaces.extend(surfaces)
+        else:
+            list_surfaces.extend(list(self.surfaces.keys()))
+        
+        list_traces = []
+        for i,s in enumerate(list_surfaces):
+            trace = self[s].surface3d_trace(showscale=True if i==0 else False,**surface_kwargs)
+            list_traces.append(trace)
+        
+        layout = go.Layout(
+            title = title,
+            scene = {
+                'xaxis': {'title': 'Easting'},
+                'yaxis': {'title': 'Northing'},
+                'zaxis': {'title': 'TVDss'}
+            },
+            width = width,
+            height = height,
+            **layout_kwargs
+        )
+        
+        return go.Figure(data=list_traces,layout=layout)
