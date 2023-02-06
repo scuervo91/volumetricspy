@@ -7,7 +7,7 @@ from scipy.integrate import simps
 from scipy.signal import convolve2d
 from scipy.interpolate import griddata, RegularGridInterpolator
 import geopandas as gpd
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon, Polygon, box
 from zmapio import ZMAPGrid
 from pydantic import BaseModel, Field, validator, validate_arguments
 from typing import Dict, Tuple, List, Union,Optional
@@ -63,11 +63,11 @@ class Surface(BaseModel):
         return v
     
     @classmethod
-    def from_z_map(
+    def from_zmap(
         cls,
         path, 
         name:str,
-        factor_z:float = -1, 
+        factor_z:float = 1, 
         crs=None
     ):
 
@@ -86,6 +86,40 @@ class Surface(BaseModel):
             shape = p.values.shape,
             crs=crs
         )
+    
+    @classmethod
+    def from_xyz(
+        cls,
+        name:str,
+        df:pd.DataFrame,
+        x:str = 'x',
+        y:str = 'y',
+        z:str = 'z',
+        factor_z:float = 1.0,
+        crs = None
+    ):
+        shape = (df[y].nunique(),df[x].nunique())
+        
+        df = df.rename(columns={
+            x:'X',
+            y:'Y',
+            z:'Z'
+        })
+        
+        df[z] *= factor_z
+        p = df.pivot(index='Y',columns='X',values='Z')
+        p.sort_index(axis=0, inplace=True)
+        p.sort_index(axis=1, inplace=True)
+
+        return cls(
+            name = name,
+            y = np.array(p.index),
+            x = np.array(p.columns),
+            z = p.values.flatten(),
+            shape = p.values.shape,
+            crs=crs
+        )
+        
         
     def to_zmap(self):
         zmap = ZMAPGrid(
@@ -114,7 +148,7 @@ class Surface(BaseModel):
         cls,
         df:pd.DataFrame,
         name:str,
-        factor_z = -1, 
+        factor_z = 1, 
         crs=None,
         fields=None,
         **kwargs
@@ -176,21 +210,127 @@ class Surface(BaseModel):
         xx, yy = np.meshgrid(self.x, self.y, indexing=indexing)
         zz = self.z.reshape(xx.shape)
         return xx, yy, zz
+    
+    def delta_x(self):
+        x = np.diff(np.sort(np.unique(self.x)))
+        return x
 
+    def delta_y(self):
+        y = np.diff(np.sort(np.unique(self.y)))
+        return y
+    
+    def mean_delta_x(self):
+        return self.delta_x().mean()
+    
+    def mean_delta_y(self):
+        return self.delta_y().mean()
+    
+    def nx(self):
+        return np.unique(self.x).shape[0]
+
+    def ny(self):
+        return np.unique(self.y).shape[0]
+    
+    
+    def df(self):
+        x, y, _ = self.get_mesh()
+        
+        df = pd.DataFrame({
+            'x':x.flatten(),
+            'y':y.flatten(),
+            'z': self.z
+        })
+        return df
+    
+    def gdf(self):
+        df = self.df()
+        
+        gdf = gpd.GeoDataFrame(
+            df,
+            geometry=gpd.points_from_xy(
+                df['x'],
+                df['y']
+            ),
+            crs=self.crs
+        )
+        return gdf
+        
+        
+    
+    def grid_gdf(self):
+        x, y, z = self.get_mesh()
+        
+        boxes = []
+        bounds = []
+        # Loop over the cells in the grid
+        for i in range(x.shape[0]-1):
+            for j in range(x.shape[1]-1):
+                minx, miny = x[i, j], y[i, j]
+                maxx, maxy = x[i+1, j+1], y[i+1, j+1]
+                bound = [minx, miny, maxx, maxy]
+                z_mean = np.mean([z[i, j], z[i, j],z[i+1, j+1], z[i+1, j+1]])
+                b = box(*bound)
+                bound.append(z_mean)
+                boxes.append(b)
+                bounds.append(bound)
+                
+        gdf = gpd.GeoDataFrame(
+            bounds,
+            columns = ['minx','miny','maxx','maxy','zmean'],
+            geometry=boxes,
+            crs = self.crs
+        )
+                
+        return gdf
+    
+    def cell_integrate(self):
+        
+        xx, yy, zz = self.get_mesh()
+        
+        dif_x = np.diff(xx,axis=1)[1:,:]
+        dif_y = np.diff(yy,axis=0)[:,1:]
+        
+        avgx = convolve2d(zz,np.ones((1,2)),mode='same')/2
+        avgy = convolve2d(zz,np.ones((2,1)),mode='same')/2
+        h_mean = np.mean([avgx,avgy],axis=0)[1:,1:]
+        h_mean[np.isnan(h_mean)] = 0
+        
+        return dif_x, dif_y, h_mean
+    
+    def cells_area(self):
+        dif_x, dif_y, h_mean = self.cell_integrate()       
+        return dif_x * dif_y
+        
+    def surface_integrate(self,areal_factor=1.,depth_factor=1.,vol_factor=1.):
+        dif_x, dif_y, h_mean = self.cell_integrate()
+
+        vol_cel = dif_x * dif_y * h_mean * areal_factor * depth_factor * vol_factor
+        vol = np.nansum(vol_cel)
+        return vol
+        
     def contour(self,ax=None,**kwargs):
 
         #Create the Axex
         cax= ax or plt.gca()
         xx, yy, zz = self.get_mesh()
-        return cax.contour(xx,yy,zz,**kwargs)
-
+        cax.contour(xx,yy,zz,**kwargs)
+        return cax
+    
     def contourf(self,ax=None,**kwargs):
 
         #Create the Axex
         cax= ax or plt.gca()
         xx, yy, zz = self.get_mesh()
-        return cax.contourf(xx,yy,zz,**kwargs)
-
+        cax.contourf(xx,yy,zz,**kwargs)
+        return ax
+    
+    def pcolormesh(self,ax=None,**kwargs):
+        
+        cax = ax or plt.gca()
+        xx, yy, zz = self.get_mesh()
+        cax.pcolormesh(xx,yy,zz,**kwargs)
+        return cax
+        
     def structured_surface_vtk(self):
 
         #Get a Pyvista Object StructedGrid
@@ -438,6 +578,7 @@ class Surface(BaseModel):
 
     def surface_map(
         self, 
+        contour:bool = False,
         levels=None,
         zmin=None,
         zmax=None,
@@ -446,13 +587,14 @@ class Surface(BaseModel):
         zoom=10, 
         map_style = 'OpenStreetMap', 
         ax=None,
-        fill_color='OrRd', 
-        fill_opacity=1, 
-        line_opacity=1,
+        **kwargs
     ):
-    
-        gdf = self.get_contours_gdf(levels=levels,zmin=zmin,zmax=zmax,n=n,crs=crs).reset_index()
 
+        if contour:
+            gdf = self.get_contours_gdf(levels=levels,zmin=zmin,zmax=zmax,n=n,crs=crs).reset_index()
+        else:
+            gdf = self.gdf().reset_index()
+            gdf = gdf.loc[gdf['zmean'].notnull()]
         
         if ax is None:               
             centroid_gdf = gdf.to_crs(self.crs).centroid.to_crs(crs)
@@ -462,17 +604,11 @@ class Surface(BaseModel):
                 location=(center['lat'],center['lon']),
                 zoom_start=zoom,
                 tiles = map_style)
-        
-        folium.Choropleth(
-            geo_data=gdf.to_json(),
-            data=gdf[['index','level']],
-            columns=['index','level'],
-            key_on='feature.properties.index',
-            fill_color=fill_color, 
-            fill_opacity=fill_opacity, 
-            line_opacity=line_opacity,
-            legend_name='Level [ft]',
-        ).add_to(ax)
+            
+        ax = gdf.explore(
+            m = ax,
+            **kwargs
+        )
         
         folium.LayerControl().add_to(ax)
         #LocateControl().add_to(map_folium)
@@ -542,6 +678,7 @@ class Surface(BaseModel):
             x=self.x,
             y=self.y,
             z=z,
+            name = self.name,
             **kwargs            
         )
         
@@ -640,6 +777,7 @@ class SurfaceGroup(BaseModel):
             list_surfaces.append(surf_copy)
         
         self.add_surface(list_surfaces)
+        return None
             
     def get_volume_bounds(self, 
         top_surface=None, 
@@ -741,6 +879,128 @@ class SurfaceGroup(BaseModel):
 
         return grid_blocks
     
+    def sync_surfaces(
+        self,
+        surfaces:List[str] = None,
+        nx:int = None,
+        ny:int = None,
+        dx:float = None,
+        dy:float = None,
+        suffix: str = 'synced'
+    ):
+        list_surfaces = []
+        if isinstance(surfaces,str):
+            list_surfaces.append(surfaces)
+        elif isinstance(surfaces,list):
+            list_surfaces.extend(surfaces)
+        else:
+            list_surfaces.extend(list(self.surfaces.keys()))
+            
+        df_list = []
+        s_shapes = {}
+        for s in list_surfaces:
+            dfi = self[s].df()
+            dfi['surface'] = s
+            df_list.append(dfi)
+            s_shapes[s] = self[s].shape
+                    
+        df = pd.concat(df_list,axis=0)
+        
+        min_max_df = df.agg(['min','max'])
+        
+        if nx is not None:
+            x_arr = np.linspace(
+                min_max_df.loc['min','x'],
+                min_max_df.loc['max','x'],
+                nx
+            )
+        elif dx is not None:
+            x_arr = np.arange(
+                min_max_df.loc['min','x'],
+                min_max_df.loc['max','x'],
+                dx
+            )
+        else:
+            dx = df.groupby('surface')['x'].apply(lambda x: np.mean(np.diff(np.sort(np.unique(x))))).mean()
+            x_arr = np.arange(
+                min_max_df.loc['min','x'],
+                min_max_df.loc['max','x'],
+                dx
+            )
+            
+        if ny is not None:
+            y_arr = np.linspace(
+                min_max_df.loc['min','y'],
+                min_max_df.loc['max','y'],
+                nx
+            )
+        elif dy is not None:
+            y_arr = np.arange(
+                min_max_df.loc['min','y'],
+                min_max_df.loc['max','y'],
+                dy
+            )
+        else:
+            dy = df.groupby('surface')['y'].apply(lambda x: np.mean(np.diff(np.sort(np.unique(x))))).mean()
+            y_arr = np.arange(
+                min_max_df.loc['min','y'],
+                min_max_df.loc['max','y'],
+                dy
+            )
+            
+        xx, yy = np.meshgrid(x_arr,y_arr)
+        new_points = np.column_stack((yy.flatten(),xx.flatten()))
+        new_df = pd.DataFrame(new_points, columns=['y','x'])
+        
+        for s, dfs in df.groupby('surface'):
+            interps = RegularGridInterpolator(
+                (np.sort(dfs['y'].unique()), np.sort(dfs['x'].unique())), 
+                dfs['z'].values.reshape(s_shapes[s]),
+                bounds_error=False, 
+                fill_value=np.nan
+            )
+            new_df[s] = interps(new_points)
+            
+        new_melt_df = new_df.melt(
+            id_vars=['x','y'],
+            value_name = 'z',
+            var_name= 'surface'
+        )
+        
+        list_surfaces = []
+        
+        for s, dfs in new_melt_df.groupby('surface'):
+            si = Surface.from_df(
+                dfs,
+                name = f'{s}_{suffix}',
+            )
+            list_surfaces.append(si)
+            
+        self.add_surface(surf=list_surfaces)
+        
+        return None
+        
+    def surfaces_differences(
+        self,
+        top_surf:str,
+        bottom_surf:str,
+        suffix:str = 'dif'  
+    ):
+        z_dif = self[top_surf].z - self[bottom_surf].z
+        z_dif[z_dif<0] = 0 
+        
+        dif_s = Surface(
+            x = self[top_surf].x,
+            y = self[bottom_surf].y,
+            z = z_dif,
+            name = f'{top_surf}_{bottom_surf}_{suffix}',
+            shape = self[top_surf].shape,
+            crs = self[top_surf].crs
+        )
+        
+        self.add_surface(dif_s)
+        return None
+        
     def volume_between_surfaces(
         self,
         top_surf:str,
@@ -774,9 +1034,6 @@ class SurfaceGroup(BaseModel):
         min_y = np.nanmax([min_y1,min_y2])
         max_y = np.nanmin([max_y1,max_y2])
 
-
-        nx=4
-        ny=5
         x_arr = np.linspace(min_x,max_x,nx)
         y_arr = np.linspace(min_y,max_y,ny)
 
@@ -794,15 +1051,14 @@ class SurfaceGroup(BaseModel):
         new_df['z1'] = interp1(new_points)
         new_df['z2'] = interp2(new_points)
         
-        newx = new_df['x'].values.reshape((ny,nx))
-        newy = new_df['y'].values.reshape((ny,nx))
+        # newx = new_df['x'].values.reshape((ny,nx))
+        # newy = new_df['y'].values.reshape((ny,nx))
         newz1 = new_df['z1'].values.reshape((ny,nx))
         newz2 = new_df['z2'].values.reshape((ny,nx))
         
         h1_avgx = convolve2d(newz1,np.ones((1,2)),mode='same')/2
         h1_avgy = convolve2d(newz1,np.ones((2,1)),mode='same')/2
         h_mean1 = np.mean([h1_avgx,h1_avgy],axis=0)[1:,1:]
-
 
         h2_avgx = convolve2d(newz2,np.ones((1,2)),mode='same')/2
         h2_avgy = convolve2d(newz2,np.ones((2,1)),mode='same')/2
