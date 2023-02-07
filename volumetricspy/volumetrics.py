@@ -62,6 +62,38 @@ class Surface(BaseModel):
             assert v[i].shape[0] == length, f'Shape mismatch: {v[i].shape} != {length}'
         return v
     
+    def __add__(self,other):
+        if self.shape != other.shape:
+            raise ValueError(f'Maps should be Synced and have same shape. Left shape {self.shape}, Right shape {other.shape}')
+        
+        new = self.copy()
+        new.z = new.z + other.z 
+        return new
+
+    def __sub__(self,other):
+        if self.shape != other.shape:
+            raise ValueError(f'Maps should be Synced and have same shape. Left shape {self.shape}, Right shape {other.shape}')
+        
+        new = self.copy()
+        new.z = new.z - other.z 
+        return new
+
+    def __mul__(self,other):
+        if self.shape != other.shape:
+            raise ValueError(f'Maps should be Synced and have same shape. Left shape {self.shape}, Right shape {other.shape}')
+        
+        new = self.copy()
+        new.z = new.z * other.z 
+        return new
+
+    def __div__(self,other):
+        if self.shape != other.shape:
+            raise ValueError(f'Maps should be Synced and have same shape. Left shape {self.shape}, Right shape {other.shape}')
+        
+        new = self.copy()
+        new.z = new.z / other.z 
+        return new
+    
     @classmethod
     def from_zmap(
         cls,
