@@ -152,7 +152,35 @@ class Surface(BaseModel):
             crs=crs
         )
         
+    @classmethod
+    def constant_surface(
+        cls,
+        xmin:float,
+        xmax:float,
+        ymin:float,
+        ymax:float,
+        value:float,
+        nx:int,
+        ny:int,
+        name:str = 'constant',
+        crs:int = None
+    ):
         
+        x = np.linspace(xmin,xmax,nx)
+        y = np.linspace(ymin,ymax,ny)
+        
+        z = np.full((nx,ny),value).flatten()
+        
+        return cls(
+            name = name,
+            y = y,
+            x = x,
+            z = z,
+            shape = (ny,nx),
+            crs=crs
+        )
+    
+    
     def to_zmap(self):
         zmap = ZMAPGrid(
             z_values=np.flip(self.z.reshape(self.shape,order='C').T,axis=1),
@@ -263,6 +291,16 @@ class Surface(BaseModel):
     def ny(self):
         return np.unique(self.y).shape[0]
     
+    def bounds(self):
+        
+        xmin = np.nanmin(self.x)
+        xmax = np.nanmax(self.x)
+        ymin = np.nanmin(self.y)
+        ymax = np.nanmax(self.y)
+        zmin = np.nanmin(self.z)
+        zmax = np.nanmax(self.z)
+        
+        return xmin,xmax,ymin,ymax,zmin,zmax
     
     def df(self):
         x, y, _ = self.get_mesh()
@@ -771,6 +809,69 @@ class SurfaceGroup(BaseModel):
     
     def surfaces_list(self):
         return list(self.surfaces.keys())
+    
+    def bounds(self,surf:Union[Surface,List[Surface]]):
+        list_surfaces = []
+        if isinstance(surf,str):
+            list_surfaces.append(surf)
+        elif isinstance(surf,list):
+            list_surfaces.extend(surf)
+        else:
+            list_surfaces.extend(list(self.surfaces.keys()))
+        
+        xmin_list = []
+        xmax_list = []
+        ymin_list = []
+        ymax_list = []
+        zmin_list = []
+        zmax_list = []
+        
+        for s in list_surfaces:
+            b = self[s].bounds()
+            xmin_list.append(b[0])
+            xmax_list.append(b[1])
+            ymin_list.append(b[2])
+            ymax_list.append(b[3])
+            zmin_list.append(b[4])
+            zmax_list.append(b[5])
+            
+        xmin = np.nanmin(xmin_list)
+        xmax = np.nanmax(xmax_list)
+        ymin = np.nanmin(ymin_list)
+        ymax = np.nanmax(ymax_list)
+        zmin = np.nanmin(zmin_list)
+        zmax = np.nanmax(zmax_list)
+
+        return xmin, xmax,ymin,ymax,zmin,zmax
+
+
+    def create_constant_surface(
+        self,
+        value:float,
+        name:str,
+        nx,
+        ny,
+        surf = None 
+    ):
+                    
+        bounds = self.bounds(surf=surf)
+        
+        s = Surface.constant_surface(
+           xmin = bounds[0],
+           xmax =  bounds[1],
+           ymin = bounds[2],
+           ymax = bounds[3],
+           value = value,
+           name = name,
+           nx = ny,
+           ny = nx
+        )
+        
+        self.add_surface(s)
+        
+        return None
+        
+        
 
     @validate_arguments
     def add_surface(self,surf:Union[Surface,List[Surface]]):
