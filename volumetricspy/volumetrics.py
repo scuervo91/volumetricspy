@@ -917,7 +917,7 @@ class SurfaceGroup(BaseModel):
         nx:int = None,
         ny:int = None,
         dx:float = None,
-        dy:float = None,
+        dy:float = None, 
         suffix: str = 'synced'
     ):
         list_surfaces = []
@@ -1016,8 +1016,19 @@ class SurfaceGroup(BaseModel):
         self,
         top_surf:str,
         bottom_surf:str,
-        suffix:str = 'dif'  
+        suffix:str = 'dif',
+        zmin:float = None,
+        zmax:float = None
+        
     ):
+        top_z = self[top_surf].z
+        bottom_z = self[bottom_surf].z
+        if zmax is not None:
+            top_z[top_z>zmax] = zmax
+            
+        if zmin is not None:
+            bottom_z[bottom_z<zmin] = zmin
+        
         z_dif = self[top_surf].z - self[bottom_surf].z
         z_dif[z_dif<0] = 0 
         
