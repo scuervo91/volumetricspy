@@ -68,6 +68,7 @@ class Surface(BaseModel):
         
         new = self.copy()
         new.z = new.z + other.z 
+        new.name = f'{new.name}_add_{other.name}'
         return new
 
     def __sub__(self,other):
@@ -76,6 +77,7 @@ class Surface(BaseModel):
         
         new = self.copy()
         new.z = new.z - other.z 
+        new.name = f'{new.name}_sub_{other.name}'
         return new
 
     def __mul__(self,other):
@@ -84,14 +86,16 @@ class Surface(BaseModel):
         
         new = self.copy()
         new.z = new.z * other.z 
+        new.name = f'{new.name}_mul_{other.name}'
         return new
 
-    def __div__(self,other):
+    def __truediv__(self,other):
         if self.shape != other.shape:
             raise ValueError(f'Maps should be Synced and have same shape. Left shape {self.shape}, Right shape {other.shape}')
         
         new = self.copy()
-        new.z = new.z / other.z 
+        new.z = new.z / other.z
+        new.name = f'{new.name}_div_{other.name}' 
         return new
     
     @classmethod
@@ -124,9 +128,9 @@ class Surface(BaseModel):
         cls,
         name:str,
         df:pd.DataFrame,
-        x:str = 'x',
-        y:str = 'y',
-        z:str = 'z',
+        x:str = 'X',
+        y:str = 'Y',
+        z:str = 'Z',
         factor_z:float = 1.0,
         crs = None
     ):
@@ -383,7 +387,8 @@ class Surface(BaseModel):
         #Create the Axex
         cax= ax or plt.gca()
         xx, yy, zz = self.get_mesh()
-        cax.contour(xx,yy,zz,**kwargs)
+        im = cax.contour(xx,yy,zz,**kwargs)
+        cbar = plt.colorbar(im, ax=cax)
         return cax
     
     def contourf(self,ax=None,**kwargs):
@@ -391,14 +396,16 @@ class Surface(BaseModel):
         #Create the Axex
         cax= ax or plt.gca()
         xx, yy, zz = self.get_mesh()
-        cax.contourf(xx,yy,zz,**kwargs)
-        return ax
+        im = cax.contourf(xx,yy,zz,**kwargs)
+        cbar = plt.colorbar(im, ax=cax)
+        return cax
     
     def pcolormesh(self,ax=None,**kwargs):
         
         cax = ax or plt.gca()
         xx, yy, zz = self.get_mesh()
-        cax.pcolormesh(xx,yy,zz,**kwargs)
+        im = cax.pcolormesh(xx,yy,zz,**kwargs)
+        cbar = plt.colorbar(im, ax=cax)
         return cax
         
     def structured_surface_vtk(self):
@@ -1118,6 +1125,7 @@ class SurfaceGroup(BaseModel):
         top_surf:str,
         bottom_surf:str,
         suffix:str = 'dif',
+        name:str = None,
         zmin:float = None,
         zmax:float = None
         
@@ -1137,7 +1145,7 @@ class SurfaceGroup(BaseModel):
             x = self[top_surf].x,
             y = self[bottom_surf].y,
             z = z_dif,
-            name = f'{top_surf}_{bottom_surf}_{suffix}',
+            name = f'{top_surf}_{bottom_surf}_{suffix}' if name is None else name,
             shape = self[top_surf].shape,
             crs = self[top_surf].crs
         )
@@ -1234,7 +1242,8 @@ class SurfaceGroup(BaseModel):
         
         list_traces = []
         for i,s in enumerate(list_surfaces):
-            trace = self[s].surface3d_trace(showscale=True if i==0 else False,**surface_kwargs)
+            s_kwargs = surface_kwargs.get(s,{})
+            trace = self[s].surface3d_trace(showscale=True if i==0 else False,**s_kwargs)
             list_traces.append(trace)
         
         layout = go.Layout(
