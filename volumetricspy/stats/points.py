@@ -74,7 +74,7 @@ class Dot(BaseModel):
             self.fields[key] = value
             
 class CloudPoints(BaseModel):
-    points: Optional[List[Dot]] = Field(None)
+    points: List[Dot] = Field(...)
     __num__: int = PrivateAttr(0)
     
     class Config:
@@ -140,9 +140,9 @@ class CloudPoints(BaseModel):
             
         return gpd.GeoDataFrame(pd.concat(gdf_list, axis=0).reset_index(drop=True))
     
-    @validate_arguments(config=dict(arbitrary_types_allowed=True))
+    @classmethod
     def from_df(
-        self, 
+        cls, 
         df:pd.DataFrame,
         x:str='x',
         y:Optional[str]=None,
@@ -150,8 +150,8 @@ class CloudPoints(BaseModel):
         crs:Optional[int]=None, 
         fields:Optional[Union[str, List[str]]]=None
     ):
-        
-        for i,r in df.iterrows():
+        dots = []
+        for _,r in df.iterrows():
             _dot = Dot(
                 x = r[x],
                 y = r[y] if y is not None else None,
@@ -159,9 +159,9 @@ class CloudPoints(BaseModel):
                 fields = r[fields].to_dict() if fields is not None else None,
                 crs = crs
             )
-            self.add_point(_dot)
+            dots.append(_dot)
             
-        return self
+        return cls(points=dots)
     
     def add_fields_from_df(self, df:pd.DataFrame, fields:List[str]):
         for i,p in enumerate(self.points):

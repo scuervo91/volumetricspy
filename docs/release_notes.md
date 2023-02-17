@@ -1,5 +1,13 @@
 # Release Notes
 
+# 0.1.8
+### Features
+
+* Create constants surfaces classmethod. This function helps to create surfaces like WOC
+* Add add, sub, mul, trudiv operators to surfaces. now you can make operations between surfaces. The operations will take place in the Z attribute
+* Add ability to sync the surfaces to have the same grid. To do this a Regular Grid Interpolator is used.
+* Surfaces Difference 
+* Integrate along surface. Usefull when calculating Volumetrics.
 
 # 0.1.7
 ### Features
