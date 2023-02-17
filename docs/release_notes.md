@@ -1,5 +1,8 @@
 # Release Notes
 
+# 0.1.10
+### Fix
+* Fix dependencies issues
 # 0.1.9
 ### Fix
 * Fix dependencies issues
