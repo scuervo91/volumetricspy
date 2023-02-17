@@ -3,6 +3,8 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_run:
+
 jobs:
   build:
     runs-on: ubuntu-latest
